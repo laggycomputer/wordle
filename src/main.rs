@@ -47,11 +47,14 @@ where
 fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
-    let mut guesser = time("init", || {
+    let (bank, mut guesser) = time("init", || {
         let bank = WordBank::from_reader(Cursor::new(WORDS)).context("word bank")?;
         let scorer = MaxEliminationsScorer::new(bank.clone());
 
-        anyhow::Ok(MaxScoreGuesser::new(GuessFrom::PossibleWords, bank, scorer))
+        anyhow::Ok((
+            bank.clone(),
+            MaxScoreGuesser::new(GuessFrom::PossibleWords, bank, scorer),
+        ))
     })?;
 
     let mut first_guess = true;
@@ -78,7 +81,10 @@ fn main() -> anyhow::Result<()> {
 
             if let Ok(p @ ..5) = trimmed.parse::<usize>() {
                 break guesses[p - 1].guess.clone();
-            } else if trimmed.len() == 5 && trimmed.chars().all(|c| c.is_ascii_alphabetic()) {
+            } else if trimmed.len() == 5
+                && trimmed.chars().all(|c| c.is_ascii_alphabetic())
+                && bank.iter().any(|w| w.eq_ignore_ascii_case(trimmed))
+            {
                 break Arc::from(trimmed);
             }
         };
