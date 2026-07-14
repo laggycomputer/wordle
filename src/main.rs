@@ -2,11 +2,13 @@ use anyhow::Context as _;
 use clap::Parser;
 use rs_wordle_solver::GuessFrom;
 use rs_wordle_solver::GuessResult;
-use rs_wordle_solver::Guesser as _;
+use rs_wordle_solver::Guesser;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::ScoredGuess;
 use rs_wordle_solver::WordBank;
+use rs_wordle_solver::WordleError;
+use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use rs_wordle_solver::scorers::MaxEliminationsScorer;
 use std::io;
 use std::io::Cursor;
@@ -33,6 +35,8 @@ struct Options {
     first_n: usize,
     #[arg(default_value = "10")]
     next_n: usize,
+    #[arg(default_value = "bool")]
+    thorough: bool,
 }
 
 fn print_guesses<'g, I>(iter: I)
@@ -44,30 +48,89 @@ where
     }
 }
 
+enum Scorer {
+    Cheap(MaxScoreGuesser<MaxEliminationsScorer>),
+    Thorough(MaxScoreGuesser<MaxComboEliminationsScorer>),
+}
+
+impl Guesser for Scorer {
+    fn update(&mut self, result: &GuessResult<'_>) -> Result<(), WordleError> {
+        match self {
+            Scorer::Cheap(guesser) => guesser.update(result),
+            Scorer::Thorough(guesser) => guesser.update(result),
+        }
+    }
+
+    fn select_next_guess(&mut self) -> Option<Arc<str>> {
+        match self {
+            Self::Cheap(guesser) => guesser.select_next_guess(),
+            Self::Thorough(guesser) => guesser.select_next_guess(),
+        }
+    }
+
+    fn select_next_guess_from(&mut self, from: GuessFrom) -> Option<Arc<str>> {
+        match self {
+            Scorer::Cheap(guesser) => guesser.select_next_guess_from(from),
+            Scorer::Thorough(guesser) => guesser.select_next_guess_from(from),
+        }
+    }
+
+    fn possible_words(&self) -> &[Arc<str>] {
+        match self {
+            Scorer::Cheap(guesser) => guesser.possible_words(),
+            Scorer::Thorough(guesser) => guesser.possible_words(),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
-    let (bank, mut guesser) = time("init", || {
+    let (bank, mut engine) = time("init", || {
         let bank = WordBank::from_reader(Cursor::new(WORDS)).context("word bank")?;
-        let scorer = MaxEliminationsScorer::new(bank.clone());
 
         anyhow::Ok((
             bank.clone(),
-            MaxScoreGuesser::new(GuessFrom::PossibleWords, bank, scorer),
+            match opts.thorough {
+                false => Scorer::Cheap(MaxScoreGuesser::new(
+                    GuessFrom::PossibleWords,
+                    bank.clone(),
+                    MaxEliminationsScorer::new(bank.clone()),
+                )),
+                true => Scorer::Thorough(MaxScoreGuesser::new(
+                    GuessFrom::PossibleWords,
+                    bank.clone(),
+                    #[expect(clippy::expect_used, reason = "i read the code man")]
+                    {
+                        MaxComboEliminationsScorer::new(
+                            bank.clone(),
+                            GuessFrom::AllUnguessedWords,
+                            256,
+                        )
+                        .expect("appears to be infallible")
+                    },
+                )),
+            },
         ))
     })?;
 
     let mut first_guess = true;
     let mut buf = String::with_capacity(5);
 
-    while guesser.possible_words().len() > 1 {
-        let guesses = match first_guess {
-            true => {
-                first_guess = false;
-                time("first guess", || guesser.select_top_n_guesses(opts.first_n))
-            }
-            false => time("next guess", || guesser.select_top_n_guesses(opts.next_n)),
-        };
+    while engine.possible_words().len() > 1 {
+        let guesses = time(
+            match first_guess {
+                true => {
+                    first_guess = false;
+                    "first guess"
+                }
+                false => "next guess",
+            },
+            || match engine {
+                Scorer::Cheap(ref mut e) => e.select_top_n_guesses(opts.first_n),
+                Scorer::Thorough(ref mut e) => e.select_top_n_guesses(opts.first_n),
+            },
+        );
         print_guesses(&guesses);
         io::stdout().flush()?;
 
@@ -115,7 +178,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         time("updated state", || {
-            guesser.update(&GuessResult {
+            engine.update(&GuessResult {
                 guess: &guess,
                 results: outcome,
             })
@@ -123,7 +186,7 @@ fn main() -> anyhow::Result<()> {
         .context("update state")?;
     }
 
-    match &guesser.possible_words() {
+    match &engine.possible_words() {
         [one] => println!("the game is solved: {one}"),
         [] => println!("game is inconsistent :("),
         _ => unreachable!("we should be looping"),
