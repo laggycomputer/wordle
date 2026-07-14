@@ -1,0 +1,10 @@
+allow-dbg-in-tests = true
+allow-expect-in-tests = true
+allow-renamed-params-for = [".."]
+allow-unwrap-in-tests = true
+allowed-duplicate-crates = []
+disallowed-fields = []
+disallowed-macros = []
+disallowed-methods = []
+disallowed-names = []
+disallowed-types = []
