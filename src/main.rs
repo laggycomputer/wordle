@@ -11,6 +11,7 @@ use rs_wordle_solver::scorers::MaxEliminationsScorer;
 use std::io;
 use std::io::Cursor;
 use std::io::Write as _;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn time<F, R>(phase: &str, func: F) -> R
@@ -67,19 +68,18 @@ fn main() -> anyhow::Result<()> {
         print_guesses(&guesses);
         io::stdout().flush()?;
 
-        let guess_i = loop {
+        let guess = loop {
             print!("enter your guess, the word or index: ");
             io::stdout().flush()?;
             buf.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
 
-            if let Ok(p) = buf.trim().parse::<usize>() {
-                break p - 1;
-            } else if let Some(by_word) = guesses
-                .iter()
-                .position(|g| g.guess.eq_ignore_ascii_case(buf.trim()))
-            {
-                break by_word;
+            let trimmed = buf.trim();
+
+            if let Ok(p @ ..5) = trimmed.parse::<usize>() {
+                break guesses[p - 1].guess.clone();
+            } else if trimmed.len() == 5 && trimmed.chars().all(|c| c.is_ascii_alphabetic()) {
+                break Arc::from(trimmed);
             }
         };
 
@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
 
         time("updated state", || {
             guesser.update(&GuessResult {
-                guess: &guesses[guess_i].guess,
+                guess: &guess,
                 results: outcome,
             })
         })
