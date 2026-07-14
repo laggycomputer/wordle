@@ -35,7 +35,7 @@ struct Options {
     first_n: usize,
     #[arg(default_value = "10")]
     next_n: usize,
-    #[arg(default_value = "bool")]
+    #[arg(default_value = "false")]
     thorough: bool,
 }
 
