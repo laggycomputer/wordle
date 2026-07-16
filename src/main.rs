@@ -149,6 +149,9 @@ fn main() -> anyhow::Result<()> {
                 && bank.iter().any(|w| w.eq_ignore_ascii_case(trimmed))
             {
                 break Arc::from(trimmed);
+            } else if buf.is_empty() {
+                // EOF
+                return Ok(());
             }
         };
 
@@ -160,6 +163,11 @@ fn main() -> anyhow::Result<()> {
             buf.clear();
             outcome.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
+
+            if buf.is_empty() {
+                // EOF
+                return Ok(());
+            }
 
             // Eb Eb Eb Eb Bb Db
             for c in buf.chars().take(5) {
