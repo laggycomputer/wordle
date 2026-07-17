@@ -83,6 +83,15 @@ impl Guesser for Scorer {
     }
 }
 
+impl Scorer {
+    fn select_top_n_guesses(&mut self, n: usize) -> Vec<ScoredGuess> {
+        match self {
+            Self::Cheap(guesser) => guesser.select_top_n_guesses(n),
+            Self::Thorough(guesser) => guesser.select_top_n_guesses(n),
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
@@ -120,15 +129,17 @@ fn main() -> anyhow::Result<()> {
     while engine.possible_words().len() > 1 {
         let guesses = time(
             match first_guess {
-                true => {
-                    first_guess = false;
-                    "first guess"
-                }
+                true => "first guess",
                 false => "next guess",
             },
-            || match engine {
-                Scorer::Cheap(ref mut e) => e.select_top_n_guesses(opts.first_n),
-                Scorer::Thorough(ref mut e) => e.select_top_n_guesses(opts.first_n),
+            || {
+                engine.select_top_n_guesses(match first_guess {
+                    true => {
+                        first_guess = false;
+                        opts.first_n
+                    }
+                    false => opts.next_n,
+                })
             },
         );
         print_guesses(&guesses);
