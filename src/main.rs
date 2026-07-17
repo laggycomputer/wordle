@@ -48,16 +48,16 @@ where
     }
 }
 
-enum Scorer {
+enum GuesserDispatch {
     Cheap(MaxScoreGuesser<MaxEliminationsScorer>),
     Thorough(MaxScoreGuesser<MaxComboEliminationsScorer>),
 }
 
-impl Guesser for Scorer {
+impl Guesser for GuesserDispatch {
     fn update(&mut self, result: &GuessResult<'_>) -> Result<(), WordleError> {
         match self {
-            Scorer::Cheap(guesser) => guesser.update(result),
-            Scorer::Thorough(guesser) => guesser.update(result),
+            GuesserDispatch::Cheap(guesser) => guesser.update(result),
+            GuesserDispatch::Thorough(guesser) => guesser.update(result),
         }
     }
 
@@ -70,20 +70,20 @@ impl Guesser for Scorer {
 
     fn select_next_guess_from(&mut self, from: GuessFrom) -> Option<Arc<str>> {
         match self {
-            Scorer::Cheap(guesser) => guesser.select_next_guess_from(from),
-            Scorer::Thorough(guesser) => guesser.select_next_guess_from(from),
+            GuesserDispatch::Cheap(guesser) => guesser.select_next_guess_from(from),
+            GuesserDispatch::Thorough(guesser) => guesser.select_next_guess_from(from),
         }
     }
 
     fn possible_words(&self) -> &[Arc<str>] {
         match self {
-            Scorer::Cheap(guesser) => guesser.possible_words(),
-            Scorer::Thorough(guesser) => guesser.possible_words(),
+            GuesserDispatch::Cheap(guesser) => guesser.possible_words(),
+            GuesserDispatch::Thorough(guesser) => guesser.possible_words(),
         }
     }
 }
 
-impl Scorer {
+impl GuesserDispatch {
     fn select_top_n_guesses(&mut self, n: usize) -> Vec<ScoredGuess> {
         match self {
             Self::Cheap(guesser) => guesser.select_top_n_guesses(n),
@@ -95,18 +95,18 @@ impl Scorer {
 fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
-    let (bank, mut engine) = time("init", || {
+    let (bank, mut guesser) = time("init", || {
         let bank = WordBank::from_reader(Cursor::new(WORDS)).context("word bank")?;
 
         anyhow::Ok((
             bank.clone(),
             match opts.thorough {
-                false => Scorer::Cheap(MaxScoreGuesser::new(
+                false => GuesserDispatch::Cheap(MaxScoreGuesser::new(
                     GuessFrom::PossibleWords,
                     bank.clone(),
                     MaxEliminationsScorer::new(bank.clone()),
                 )),
-                true => Scorer::Thorough(MaxScoreGuesser::new(
+                true => GuesserDispatch::Thorough(MaxScoreGuesser::new(
                     GuessFrom::PossibleWords,
                     bank.clone(),
                     #[expect(clippy::expect_used, reason = "i read the code man")]
@@ -126,14 +126,14 @@ fn main() -> anyhow::Result<()> {
     let mut first_guess = true;
     let mut buf = String::with_capacity(5);
 
-    while engine.possible_words().len() > 1 {
+    while guesser.possible_words().len() > 1 {
         let guesses = time(
             match first_guess {
                 true => "first guess",
                 false => "next guess",
             },
             || {
-                engine.select_top_n_guesses(match first_guess {
+                guesser.select_top_n_guesses(match first_guess {
                     true => {
                         first_guess = false;
                         opts.first_n
@@ -197,7 +197,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         time("updated state", || {
-            engine.update(&GuessResult {
+            guesser.update(&GuessResult {
                 guess: &guess,
                 results: outcome,
             })
@@ -205,7 +205,7 @@ fn main() -> anyhow::Result<()> {
         .context("update state")?;
     }
 
-    match &engine.possible_words() {
+    match &guesser.possible_words() {
         [one] => println!("the game is solved: {one}"),
         [] => println!("game is inconsistent :("),
         _ => unreachable!("we should be looping"),
