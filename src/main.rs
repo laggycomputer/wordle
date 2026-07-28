@@ -39,15 +39,6 @@ struct Options {
     thorough: bool,
 }
 
-fn print_guesses<'g, I>(iter: I)
-where
-    I: IntoIterator<Item = &'g ScoredGuess>,
-{
-    for (i, g) in iter.into_iter().enumerate() {
-        println!("{}. {} ({})", i + 1, g.guess, g.score);
-    }
-}
-
 enum GuesserDispatch {
     Cheap(MaxScoreGuesser<MaxEliminationsScorer>),
     Thorough(MaxScoreGuesser<MaxComboEliminationsScorer>),
@@ -142,17 +133,34 @@ fn main() -> anyhow::Result<()> {
                 })
             },
         );
-        print_guesses(&guesses);
+
+        for (i, g) in guesses.iter().enumerate() {
+            println!("{}. {} ({})", i + 1, g.guess, g.score);
+        }
         io::stdout().flush()?;
 
+        let mut how_many_total = opts.next_n;
+
         let guess = loop {
-            print!("enter your guess, the word or index: ");
+            print!("enter your guess (word or index) or !more <x>: ");
             io::stdout().flush()?;
             buf.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
 
             let trimmed = buf.trim();
 
+            if let Some(cmd) = trimmed.strip_prefix('!') {
+                match cmd.split_once(' ').unwrap_or((cmd, "")) {
+                    ("more", how_many) if let Ok(how_many_more) = how_many.parse::<usize>() => {
+                        how_many_total += how_many_more;
+                        let more = guesser.select_top_n_guesses(how_many_total);
+                        for (i, g) in more.iter().enumerate().skip(how_many_total - how_many_more) {
+                            println!("{}. {} ({})", i + 1, g.guess, g.score);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if let Ok(p @ ..5) = trimmed.parse::<usize>() {
                 break guesses[p - 1].guess.clone();
             } else if trimmed.len() == 5
