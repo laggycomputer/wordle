@@ -6,28 +6,13 @@ use rs_wordle_solver::Guesser;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::ScoredGuess;
-use rs_wordle_solver::WordBank;
 use rs_wordle_solver::WordleError;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use rs_wordle_solver::scorers::MaxEliminationsScorer;
 use std::io;
-use std::io::Cursor;
 use std::io::Write as _;
 use std::sync::Arc;
-use std::time::Instant;
-
-fn time<F, R>(phase: &str, func: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    let start = Instant::now();
-    let r = func();
-    let duration = start.elapsed();
-    println!("{phase} in {}", humantime::format_duration(duration));
-    r
-}
-
-const WORDS: &[u8; 89130] = include_bytes!("../bank.txt");
+use wordle::{time, words};
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -87,7 +72,7 @@ fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
     let (bank, mut guesser) = time("init", || {
-        let bank = WordBank::from_reader(Cursor::new(WORDS)).context("word bank")?;
+        let bank = words().context("word bank")?;
 
         anyhow::Ok((
             bank.clone(),

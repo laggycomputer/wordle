@@ -11,6 +11,12 @@ anyhow = "1.0.103"
 clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.4.0"
 rs-wordle-solver = "1.2.0"
+oxicode = { version = "0.2.6", features = ["compression", "compression-zstd", "serde"] }
+rs-wordle-solver = { version = "1.2.0", features = ["serde"] }
+
+[[bin]]
+name = "interactive_solver"
+path = "bin/interactive_solver.rs"
 
 [profile.release]
 lto = "fat"
@@ -167,7 +173,7 @@ semicolon_if_nothing_returned = "warn"
 single_char_pattern = "warn"
 single_match_else = "warn"
 stable_sort_primitive = "warn"
-std_instead_of_alloc = "warn"
+# std_instead_of_alloc = "warn"
 std_instead_of_core = "warn"
 str_split_at_newline = "warn"
 str_to_string = "warn"
