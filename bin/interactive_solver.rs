@@ -1,18 +1,15 @@
 use anyhow::Context as _;
 use clap::Parser;
-use rs_wordle_solver::GuessFrom;
 use rs_wordle_solver::GuessResult;
-use rs_wordle_solver::Guesser;
+use rs_wordle_solver::Guesser as _;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
-use rs_wordle_solver::ScoredGuess;
-use rs_wordle_solver::WordleError;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
-use rs_wordle_solver::scorers::MaxEliminationsScorer;
 use std::io;
 use std::io::Write as _;
 use std::sync::Arc;
-use wordle::{time, words};
+use wordle::time;
+use wordle::words;
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -20,52 +17,6 @@ struct Options {
     first_n: usize,
     #[arg(default_value = "10")]
     next_n: usize,
-    #[arg(short, action = clap::ArgAction::SetTrue)]
-    thorough: bool,
-}
-
-enum GuesserDispatch {
-    Cheap(MaxScoreGuesser<MaxEliminationsScorer>),
-    Thorough(MaxScoreGuesser<MaxComboEliminationsScorer>),
-}
-
-impl Guesser for GuesserDispatch {
-    fn update(&mut self, result: &GuessResult<'_>) -> Result<(), WordleError> {
-        match self {
-            GuesserDispatch::Cheap(guesser) => guesser.update(result),
-            GuesserDispatch::Thorough(guesser) => guesser.update(result),
-        }
-    }
-
-    fn select_next_guess(&mut self) -> Option<Arc<str>> {
-        match self {
-            Self::Cheap(guesser) => guesser.select_next_guess(),
-            Self::Thorough(guesser) => guesser.select_next_guess(),
-        }
-    }
-
-    fn select_next_guess_from(&mut self, from: GuessFrom) -> Option<Arc<str>> {
-        match self {
-            GuesserDispatch::Cheap(guesser) => guesser.select_next_guess_from(from),
-            GuesserDispatch::Thorough(guesser) => guesser.select_next_guess_from(from),
-        }
-    }
-
-    fn possible_words(&self) -> &[Arc<str>] {
-        match self {
-            GuesserDispatch::Cheap(guesser) => guesser.possible_words(),
-            GuesserDispatch::Thorough(guesser) => guesser.possible_words(),
-        }
-    }
-}
-
-impl GuesserDispatch {
-    fn select_top_n_guesses(&mut self, n: usize) -> Vec<ScoredGuess> {
-        match self {
-            Self::Cheap(guesser) => guesser.select_top_n_guesses(n),
-            Self::Thorough(guesser) => guesser.select_top_n_guesses(n),
-        }
-    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -74,29 +25,15 @@ fn main() -> anyhow::Result<()> {
     let (bank, mut guesser) = time("init", || {
         let bank = words().context("word bank")?;
 
-        anyhow::Ok((
-            bank.clone(),
-            match opts.thorough {
-                false => GuesserDispatch::Cheap(MaxScoreGuesser::new(
-                    GuessFrom::PossibleWords,
-                    bank.clone(),
-                    MaxEliminationsScorer::new(bank.clone()),
-                )),
-                true => GuesserDispatch::Thorough(MaxScoreGuesser::new(
-                    GuessFrom::PossibleWords,
-                    bank.clone(),
-                    #[expect(clippy::expect_used, reason = "i read the code man")]
-                    {
-                        MaxComboEliminationsScorer::new(
-                            bank.clone(),
-                            GuessFrom::AllUnguessedWords,
-                            256,
-                        )
-                        .expect("appears to be infallible")
-                    },
-                )),
-            },
-        ))
+        anyhow::Ok((bank.clone(), {
+            let decompressed = oxicode::compression::decompress(include_bytes!("../init.bin"))?;
+            let (decoded, _) = oxicode::serde::decode_from_slice::<
+                MaxScoreGuesser<MaxComboEliminationsScorer>,
+                _,
+            >(&decompressed, oxicode::config::standard())?;
+
+            decoded
+        }))
     })?;
 
     let mut first_guess = true;

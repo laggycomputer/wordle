@@ -10,17 +10,21 @@ publish = false
 anyhow = "1.0.103"
 clap = { version = "4.6.1", features = ["derive"] }
 humantime = "2.4.0"
-rs-wordle-solver = "1.2.0"
 oxicode = { version = "0.2.6", features = ["compression", "compression-zstd", "serde"] }
 rs-wordle-solver = { version = "1.2.0", features = ["serde"] }
 
 [[bin]]
-name = "interactive_solver"
+name = "bake"
+path = "bin/bake.rs"
+
+[[bin]]
+name = "wordle"
 path = "bin/interactive_solver.rs"
 
 [profile.release]
 lto = "fat"
 codegen-units = 1
+overflow-checks = false
 
 [profile.release_extra]
 inherits = "release"
