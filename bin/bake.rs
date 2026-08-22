@@ -8,7 +8,7 @@ use wordle::words;
 fn main() -> anyhow::Result<()> {
     let bank = words().context("word bank")?;
 
-    let guesser = time("init", || {
+    let mut guesser = time("init", || {
         let mut guesser = MaxScoreGuesser::new(
             GuessFrom::AllUnguessedWords,
             bank.clone(),
@@ -19,9 +19,11 @@ fn main() -> anyhow::Result<()> {
             },
         );
 
-        guesser.get_or_compute_scores();
-
         guesser
+    });
+
+    time("all scores", || {
+        guesser.get_or_compute_scores();
     });
 
     let v = oxicode::serde::encode_to_vec(&guesser, oxicode::config::standard())?;
