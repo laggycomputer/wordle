@@ -22,7 +22,7 @@ struct Options {
 fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
-    let (bank, mut guesser) = time("init", || {
+    let (bank, mut guesser) = time("init from baked", || {
         let bank = words().context("word bank")?;
 
         anyhow::Ok((bank.clone(), {
