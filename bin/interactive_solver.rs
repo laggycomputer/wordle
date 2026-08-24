@@ -17,6 +17,7 @@ struct Options {
     first_n: usize,
     #[arg(default_value = "10")]
     next_n: usize,
+    // TODO simulate
 }
 
 fn main() -> anyhow::Result<()> {
