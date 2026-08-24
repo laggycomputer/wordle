@@ -13,6 +13,10 @@ where
     r
 }
 
-pub fn words() -> Result<WordBank, WordleError> {
-    WordBank::from_iterator(include_str!("../bank.txt").split_ascii_whitespace())
+pub fn words() -> impl Iterator<Item = &'static str> {
+    include_str!("../bank.txt").split_ascii_whitespace()
+}
+
+pub fn word_bank() -> Result<WordBank, WordleError> {
+    WordBank::from_iterator(words())
 }

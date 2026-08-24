@@ -9,7 +9,7 @@ use std::io;
 use std::io::Write as _;
 use std::sync::Arc;
 use wordle::time;
-use wordle::words;
+use wordle::word_bank;
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -24,7 +24,7 @@ fn main() -> anyhow::Result<()> {
     let opts = Options::parse();
 
     let (bank, mut guesser) = time("init from baked", || {
-        let bank = words().context("word bank")?;
+        let bank = word_bank().context("word bank")?;
 
         anyhow::Ok((bank.clone(), {
             let decompressed = oxicode::compression::decompress(include_bytes!("../init.bin"))?;
