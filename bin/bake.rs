@@ -113,7 +113,7 @@ fn bake_for(
 
     let store_path = {
         let mut p = data_path.join("");
-        write!(p.as_mut_os_string(), "{}", target.ident())?;
+        write!(p.as_mut_os_string(), "{}.zarr", target.ident())?;
         p
     };
 
