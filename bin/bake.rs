@@ -23,7 +23,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
-use wordle::WORDS;
+use wordle::WORDS_ARC;
 use wordle::word_bank;
 
 #[derive(Clone, Copy)]
@@ -170,10 +170,13 @@ fn bake_for(
             })?;
 
         (
-            bank.iter()
-                .filter(|w| !bank_progress.contains_key(*w))
-                .cloned()
-                .collect(),
+            Arc::from(
+                bank.iter()
+                    .filter(|w| !bank_progress.contains_key(*w))
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice(),
+            ),
             bank_progress,
         )
     } else {
@@ -181,7 +184,7 @@ fn bake_for(
             if !std::fs::exists(final_path)
                 .with_context(|| format!("check if {} exists", final_path.display()))?
             {
-                WORDS.into_iter().map(Arc::from).collect::<Vec<Arc<str>>>()
+                WORDS_ARC.clone()
             } else {
                 Default::default()
             },
