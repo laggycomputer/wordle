@@ -7,16 +7,20 @@ use core::sync::atomic::Ordering;
 use dashmap::DashMap;
 use rayon::iter::IntoParallelRefIterator as _;
 use rayon::iter::ParallelIterator as _;
+use rs_wordle_solver::GuessFrom;
+use rs_wordle_solver::GuessResult;
 use rs_wordle_solver::Guesser as _;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
+use rs_wordle_solver::WordleError;
 use rs_wordle_solver::details::WordRestrictions;
-use rs_wordle_solver::scorers::{MaxComboEliminationsScorer, WordScorer};
-use rs_wordle_solver::{GuessFrom, GuessResult, WordleError};
+use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
+use rs_wordle_solver::scorers::WordScorer;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::RwLock;
 use wordle::word_bank;
 use wordle::words;
 
@@ -72,24 +76,50 @@ fn save_progress<'bt>(
     Ok(())
 }
 
-struct TakeableScorer<'s, S: WordScorer>(Option<&'s mut S>);
+struct TakeableScorer<S: WordScorer>(Arc<RwLock<S>>);
 
-impl<'s, S> TakeableScorer<'s, S>
+impl<S> Clone for TakeableScorer<S>
 where
     S: WordScorer,
 {
-    fn new(scorer: &'s mut S) -> Self {
-        Self(Some(scorer))
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 
-impl<'s, S: WordScorer> WordScorer for TakeableScorer<'s, S> {
-    fn update(&mut self, latest_guess: &str, restrictions: &WordRestrictions, possible_words: &[Arc<str>]) -> Result<(), WordleError> {
-        self.0.as_mut().unwrap().update(latest_guess, restrictions, possible_words)
+impl<S> TakeableScorer<S>
+where
+    S: WordScorer,
+{
+    fn new(scorer: S) -> Self {
+        Self(Arc::new(RwLock::new(scorer)))
+    }
+}
+
+impl<S> TakeableScorer<S>
+where
+    S: WordScorer + Clone,
+{
+    fn yoink(self) -> S {
+        self.0.read().unwrap().clone()
+    }
+}
+
+impl<S: WordScorer> WordScorer for TakeableScorer<S> {
+    fn update(
+        &mut self,
+        latest_guess: &str,
+        restrictions: &WordRestrictions,
+        possible_words: &[Arc<str>],
+    ) -> Result<(), WordleError> {
+        self.0
+            .write()
+            .unwrap()
+            .update(latest_guess, restrictions, possible_words)
     }
 
     fn score_word(&self, word: &Arc<str>) -> i64 {
-        self.0.as_ref().unwrap().score_word(word)
+        self.0.read().unwrap().score_word(word)
     }
 }
 
@@ -123,11 +153,11 @@ fn bake_for(
         let bank_progress =
             oxicode::serde::decode_serde_from_file::<DashMap<Arc<str>, i64>>(&bank_progress_path)
                 .with_context(|| {
-                    format!(
-                        "should find valid partial bake at {}",
-                        bank_progress_path.display()
-                    )
-                })?;
+                format!(
+                    "should find valid partial bake at {}",
+                    bank_progress_path.display()
+                )
+            })?;
 
         (
             bank.iter()
@@ -154,24 +184,25 @@ fn bake_for(
     let guesser = if !bank_todo.is_empty() {
         let scorer = match target {
             BakeTarget::BaseState =>
-                {
-                    #[expect(clippy::expect_used, reason = "i read the code man")]
-                    MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)
-                        .expect("appears to be infallible")
-                }
+            {
+                #[expect(clippy::expect_used, reason = "i read the code man")]
+                MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)
+                    .expect("appears to be infallible")
+            }
             BakeTarget::AfterResponse(scorer, results) => {
-                let mut scorer = scorer.clone();
-                let mut guesser = MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone());
-                let guess =
-                    guesser
-                        .select_next_guess()
-                        .context("best next guess")?;
+                let mut scorer = TakeableScorer::new(scorer.clone());
+                let mut guesser = MaxScoreGuesser::new(
+                    GuessFrom::AllUnguessedWords,
+                    bank.clone(),
+                    scorer.clone(),
+                );
+                let guess = guesser.select_next_guess().context("best next guess")?;
                 guesser.update(&GuessResult {
-                    guess: &*guess,
+                    guess: &guess,
                     results: results.to_owned(),
                 })?;
 
-                todo!()
+                scorer.yoink()
             }
         };
 
@@ -190,11 +221,11 @@ fn bake_for(
             let loaded = n_uncommitted.load(Ordering::Acquire);
             if loaded >= parallelism
                 && let Ok(_) = n_uncommitted.compare_exchange_weak(
-                loaded,
-                0,
-                Ordering::Release,
-                Ordering::Relaxed,
-            )
+                    loaded,
+                    0,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                )
             {
                 let _ = save_progress(&dirs, target, &bank_progress);
             }
