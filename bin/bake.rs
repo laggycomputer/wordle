@@ -59,9 +59,9 @@ impl core::fmt::Display for BakeTargetIdent<'_> {
     }
 }
 
-fn save_progress<'bt>(
+fn save_progress(
     project_dirs: &directories::ProjectDirs,
-    target: BakeTarget<'bt>,
+    target: BakeTarget<'_>,
     bank_progress: &DashMap<Arc<str>, i64>,
 ) -> anyhow::Result<()> {
     let data_path = project_dirs.data_dir();
