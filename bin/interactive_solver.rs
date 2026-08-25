@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     let mut buf = String::with_capacity(word_length);
 
     while guesser.possible_words().len() > 1 {
-        let guesses = time(
+        let mut guesses = time(
             match first_guess {
                 true => "first guess",
                 false => "next guess",
@@ -89,6 +89,7 @@ fn main() -> anyhow::Result<()> {
                     ("more", how_many) if let Ok(how_many_more) = how_many.parse::<usize>() => {
                         how_many_total += how_many_more;
                         let more = guesser.select_top_n_guesses(how_many_total);
+                        guesses.extend(more.iter().cloned());
                         for (i, g) in more.iter().enumerate().skip(how_many_total - how_many_more) {
                             println!("{}. {} ({})", i + 1, g.guess, g.score);
                         }
