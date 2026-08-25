@@ -112,8 +112,22 @@ fn main() -> anyhow::Result<()> {
         };
 
         let result = if let Some(ref s) = opts.simulate {
-            rs_wordle_solver::get_result_for_guess(s, &guess)
-                .context("result for guess against simulated target")?
+            let result = rs_wordle_solver::get_result_for_guess(s, &guess)
+                .context("result for guess against simulated target")?;
+
+            print!("given simulation target, the result of this result is: ");
+            result
+                .results
+                .iter()
+                .map(|l| match l {
+                    LetterResult::Correct => 'g',
+                    LetterResult::PresentNotHere => 'y',
+                    LetterResult::NotPresent => 'b',
+                })
+                .for_each(|l| print!("{l}"));
+            println!();
+
+            result
         } else {
             let mut outcome = Vec::with_capacity(word_length);
             'outcome: loop {
