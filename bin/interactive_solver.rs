@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
             if let Ok(p) = trimmed.parse::<usize>()
-                && p < how_many_total
+                && p <= how_many_total
             {
                 break guesses[p - 1].guess.clone();
             } else if trimmed.len() == word_length
