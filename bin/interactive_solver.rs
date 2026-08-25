@@ -89,10 +89,10 @@ fn main() -> anyhow::Result<()> {
                     ("more", how_many) if let Ok(how_many_more) = how_many.parse::<usize>() => {
                         how_many_total += how_many_more;
                         let more = guesser.select_top_n_guesses(how_many_total);
-                        guesses.extend(more.iter().cloned());
                         for (i, g) in more.iter().enumerate().skip(how_many_total - how_many_more) {
                             println!("{}. {} ({})", i + 1, g.guess, g.score);
                         }
+                        guesses = more;
                     }
                     _ => {}
                 }
