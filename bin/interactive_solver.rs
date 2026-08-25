@@ -118,7 +118,7 @@ fn main() -> anyhow::Result<()> {
             let result = rs_wordle_solver::get_result_for_guess(s, &guess)
                 .context("result for guess against simulated target")?;
 
-            print!("given simulation target, the result of this result is: ");
+            print!("given simulation target, the result of this guess is: ");
             result
                 .results
                 .iter()
