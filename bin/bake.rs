@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::RwLock;
 use wordle::WORDS_ARC;
 use wordle::time;
@@ -227,6 +228,8 @@ fn bake_for(
             let n_uncommitted = AtomicUsize::new(0);
             let parallelism = std::thread::available_parallelism().map_or(1, NonZero::<usize>::get);
 
+            let ser_mutex = Arc::new(Mutex::new(()));
+
             bank_todo.par_iter().for_each(|w| {
                 let score = scorer.score_word(w);
                 bank_progress.insert(w.clone(), score);
@@ -242,7 +245,10 @@ fn bake_for(
                         Ordering::Relaxed,
                     )
                 {
+                    ser_mutex.clear_poison();
+                    let l = ser_mutex.lock().unwrap();
                     let _ = save_progress(dirs, target, &bank_progress);
+                    drop(l);
                 }
             });
 
