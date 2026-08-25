@@ -1,11 +1,9 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
-use core::num::NonZero;
-use core::sync::atomic::AtomicUsize;
-use core::sync::atomic::Ordering;
-use dashmap::DashMap;
+use core::num::NonZeroU64;
 use itertools::Itertools as _;
+use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
 use rayon::iter::ParallelIterator as _;
 use rs_wordle_solver::GuessFrom;
@@ -18,15 +16,17 @@ use rs_wordle_solver::WordleError;
 use rs_wordle_solver::details::WordRestrictions;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use rs_wordle_solver::scorers::WordScorer;
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
-use wordle::WORDS_ARC;
+use wordle::WORDS;
 use wordle::time;
 use wordle::word_bank;
+use zarrs::array::Array;
+use zarrs::array::ArrayBuilder;
+use zarrs::array::ArraySubset;
+use zarrs::array::data_type;
+use zarrs::storage::ReadableWritableListableStorage;
 
 #[derive(Clone, Copy)]
 enum BakeTarget<'o> {
@@ -61,25 +61,6 @@ impl core::fmt::Display for BakeTargetIdent<'_> {
     }
 }
 
-fn save_progress(
-    project_dirs: &directories::ProjectDirs,
-    target: BakeTarget<'_>,
-    bank_progress: &DashMap<Arc<str>, i64>,
-) -> anyhow::Result<()> {
-    let data_path = project_dirs.data_dir();
-
-    let bank_progress_path = {
-        let mut p = data_path.join("");
-        write!(p.as_mut_os_string(), "{}.partial", target.ident())?;
-        p
-    };
-
-    oxicode::serde::encode_serde_to_file(bank_progress, &bank_progress_path)
-        .with_context(|| format!("write bank progress to {}", bank_progress_path.display()))?;
-
-    Ok(())
-}
-
 struct TakeableScorer<S: WordScorer>(Arc<RwLock<S>>);
 
 impl<S> Clone for TakeableScorer<S>
@@ -97,19 +78,6 @@ where
 {
     fn new(scorer: S) -> Self {
         Self(Arc::new(RwLock::new(scorer)))
-    }
-}
-
-impl<S> TakeableScorer<S>
-where
-    S: WordScorer + Clone,
-{
-    fn yoink(self) -> S {
-        self.0.read().unwrap().clone()
-    }
-
-    fn deep_clone(&self) -> Self {
-        Self(Arc::new(RwLock::new(self.0.read().unwrap().clone())))
     }
 }
 
@@ -143,55 +111,51 @@ fn bake_for(
 
     println!("baking {}", target.ident());
 
-    let partial_suffix = ".partial";
-    let bank_progress_path = {
+    let store_path = {
         let mut p = data_path.join("");
-        write!(p.as_mut_os_string(), "{}{partial_suffix}", target.ident())?;
+        write!(p.as_mut_os_string(), "{}", target.ident())?;
         p
     };
 
-    // safety: if the inner slice does not break a codepoint, we have a valid OsStr overall
-    let final_path = Path::new(unsafe {
-        OsStr::from_encoded_bytes_unchecked(
-            &bank_progress_path.as_os_str().as_encoded_bytes()[..(bank_progress_path.as_os_str().len()
-                // safety: OsStr is always a superset of 7-bit ASCII
-                - { OsStr::from_encoded_bytes_unchecked(partial_suffix.as_bytes()) }.len())],
-        )
-    });
+    let store = Arc::new(zarrs::filesystem::FilesystemStore::new(&store_path)?)
+        as ReadableWritableListableStorage;
 
-    let (bank_todo, bank_progress) = if std::fs::exists(&bank_progress_path)
-        .with_context(|| format!("check if {} exists", bank_progress_path.display()))?
-    {
-        let bank_progress =
-            oxicode::serde::decode_serde_from_file::<DashMap<Arc<str>, i64>>(&bank_progress_path)
-                .with_context(|| {
-                format!(
-                    "should find valid partial bake at {}",
-                    bank_progress_path.display()
-                )
-            })?;
-
-        (
-            Arc::from(
-                bank.iter()
-                    .filter(|w| !bank_progress.contains_key(*w))
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice(),
-            ),
-            bank_progress,
-        )
+    let store_shape = [WORDS.len() as u64];
+    let subset_all = ArraySubset::new_with_shape(vec![WORDS.len() as u64]);
+    // could be other fs e.g. permission error but meh
+    let (w_store, s_store) = if let Ok(w) = Array::open(store.clone(), "/word") {
+        let s = Array::open(store.clone(), "/score")?;
+        (w, s)
     } else {
-        (
-            if !std::fs::exists(final_path)
-                .with_context(|| format!("check if {} exists", final_path.display()))?
-            {
-                WORDS_ARC.clone()
-            } else {
-                Default::default()
-            },
-            Default::default(),
-        )
+        zarrs::group::GroupBuilder::new()
+            .build(store.clone(), "/")?
+            .store_metadata()?;
+
+        let chunk_shape = std::iter::repeat_n(1000u64, WORDS.len() / 1000)
+            .chain(NonZeroU64::new((WORDS.len() % 1000) as u64).map(NonZeroU64::get))
+            .collect::<Vec<_>>();
+
+        let w = ArrayBuilder::new(store_shape, &*chunk_shape, data_type::string(), "")
+            .build(store.clone(), "/word")?;
+        w.store_metadata()?;
+        w.store_array_subset(&subset_all, &*WORDS)?;
+
+        let s = ArrayBuilder::new(store_shape, &*chunk_shape, data_type::int64(), i64::MIN)
+            .build(store.clone(), "/score")?;
+        s.store_metadata()?;
+
+        (w, s)
+    };
+
+    let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
+    let scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
+
+    let bank_todo = {
+        words
+            .iter()
+            .zip(&scores)
+            .filter_map(|(w, s)| (*s == i64::MIN).then_some(Arc::from(w.as_str())))
+            .collect::<Vec<_>>()
     };
 
     let (mut guesser, scorer) = match target {
@@ -222,56 +186,32 @@ fn bake_for(
 
     guesser = guesser.with_scores(&if !bank_todo.is_empty() {
         time("bake missing words", || {
-            let bar = indicatif::ProgressBar::new((bank_todo.len() + bank_progress.len()) as u64);
-            bar.set_position(bank_progress.len() as u64);
+            let scores = Mutex::new(scores);
 
-            let n_uncommitted = AtomicUsize::new(0);
-            let parallelism = std::thread::available_parallelism().map_or(1, NonZero::<usize>::get);
+            let bar = indicatif::ProgressBar::new(store_shape[0]);
+            bar.set_position(store_shape[0] - bank_todo.len() as u64);
 
-            let ser_mutex = Arc::new(Mutex::new(()));
-
-            bank_todo.par_iter().for_each(|w| {
+            bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = scorer.score_word(w);
-                bank_progress.insert(w.clone(), score);
+                scores.lock().unwrap()[i] = score;
+                let _ = s_store
+                    .store_array_subset(&ArraySubset::new_with_shape(vec![i as u64]), &[score]);
                 bar.inc(1);
-                n_uncommitted.fetch_add(1, Ordering::Relaxed);
-
-                let loaded = n_uncommitted.load(Ordering::Acquire);
-                if loaded >= parallelism
-                    && let Ok(_) = n_uncommitted.compare_exchange_weak(
-                        loaded,
-                        0,
-                        Ordering::Release,
-                        Ordering::Relaxed,
-                    )
-                {
-                    ser_mutex.clear_poison();
-                    let l = ser_mutex.lock().unwrap();
-                    let _ = save_progress(dirs, target, &bank_progress);
-                    drop(l);
-                }
             });
 
             bar.finish();
 
-            let scores = bank_progress.into_iter().collect::<HashMap<_, _>>();
-            oxicode::serde::encode_serde_to_file(&scores, final_path)
-                .with_context(|| format!("save baked guesser to {}", final_path.display()))?;
-            std::fs::remove_file(&bank_progress_path).with_context(|| {
-                format!("delete progress file {}", bank_progress_path.display())
-            })?;
             eprintln!(
-                "saved baked guesser in state {} to {} ({} bytes)",
+                "baked guesser is finished in state {} at {}",
                 target.ident(),
-                final_path.display(),
-                std::fs::metadata(final_path)?.len()
+                store_path.display(),
             );
 
-            anyhow::Ok(scores)
+            let scores = scores.into_inner()?;
+            anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
-        oxicode::serde::decode_serde_from_file(final_path)
-            .with_context(|| format!("load baked guesser from {}", final_path.display()))?
+        words.into_iter().map(Arc::from).zip(scores).collect()
     });
 
     Ok((guesser, scorer))
