@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use anyhow::bail;
 use clap::Parser;
 use rs_wordle_solver::GuessResult;
 use rs_wordle_solver::Guesser as _;
@@ -17,11 +18,12 @@ struct Options {
     first_n: usize,
     #[arg(default_value = "10")]
     next_n: usize,
-    // TODO simulate
+    #[arg(long, short)]
+    simulate: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
-    let opts = Options::parse();
+    let mut opts = Options::parse();
 
     let (bank, mut guesser) = time("init from baked", || {
         let bank = word_bank().context("word bank")?;
@@ -36,6 +38,13 @@ fn main() -> anyhow::Result<()> {
             decoded
         }))
     })?;
+
+    if let Some(ref mut s) = opts.simulate {
+        s.make_ascii_lowercase();
+        if !bank.contains(&Arc::from(&**s)) {
+            bail!("invalid simulate target")
+        }
+    }
 
     let mut first_guess = true;
     let mut buf = String::with_capacity(5);
@@ -97,43 +106,47 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        let mut outcome = Vec::with_capacity(5);
-        'outcome: loop {
-            print!("enter the outcome, b/y/g: ");
-            io::stdout().flush()?;
+        let result = if let Some(ref s) = opts.simulate {
+            rs_wordle_solver::get_result_for_guess(s, &guess)
+                .context("result for guess against simulated target")?
+        } else {
+            let mut outcome = Vec::with_capacity(5);
+            'outcome: loop {
+                print!("enter the outcome, b/y/g: ");
+                io::stdout().flush()?;
 
-            buf.clear();
-            outcome.clear();
-            io::stdin().read_line(&mut buf).context("read stdin")?;
+                buf.clear();
+                outcome.clear();
+                io::stdin().read_line(&mut buf).context("read stdin")?;
 
-            if buf.is_empty() {
-                // EOF
-                return Ok(());
+                if buf.is_empty() {
+                    // EOF
+                    return Ok(());
+                }
+
+                // Eb Eb Eb Eb Bb Db
+                for c in buf.chars().take(5) {
+                    outcome.push(match c {
+                        'b' | 'B' => LetterResult::NotPresent,
+                        'y' | 'Y' => LetterResult::PresentNotHere,
+                        'g' | 'G' => LetterResult::Correct,
+                        _ => {
+                            println!();
+                            continue 'outcome;
+                        }
+                    });
+                }
+
+                break;
             }
 
-            // Eb Eb Eb Eb Bb Db
-            for c in buf.chars().take(5) {
-                outcome.push(match c {
-                    'b' | 'B' => LetterResult::NotPresent,
-                    'y' | 'Y' => LetterResult::PresentNotHere,
-                    'g' | 'G' => LetterResult::Correct,
-                    _ => {
-                        println!();
-                        continue 'outcome;
-                    }
-                });
-            }
-
-            break;
-        }
-
-        time("updated state", || {
-            guesser.update(&GuessResult {
+            GuessResult {
                 guess: &guess,
                 results: outcome,
-            })
-        })
-        .context("update state")?;
+            }
+        };
+
+        time("updated state", || guesser.update(&result)).context("update state")?;
     }
 
     match &guesser.possible_words() {
