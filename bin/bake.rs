@@ -5,6 +5,7 @@ use core::num::NonZero;
 use core::sync::atomic::AtomicUsize;
 use core::sync::atomic::Ordering;
 use dashmap::DashMap;
+use itertools::Itertools as _;
 use rayon::iter::IntoParallelRefIterator as _;
 use rayon::iter::ParallelIterator as _;
 use rs_wordle_solver::GuessFrom;
@@ -17,12 +18,13 @@ use rs_wordle_solver::WordleError;
 use rs_wordle_solver::details::WordRestrictions;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use rs_wordle_solver::scorers::WordScorer;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
+use wordle::WORDS;
 use wordle::word_bank;
-use wordle::words;
 
 #[derive(Clone, Copy)]
 enum BakeTarget<'o> {
@@ -39,7 +41,7 @@ impl BakeTarget<'_> {
 }
 
 impl core::fmt::Display for BakeTargetIdent<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self.0 {
             BakeTarget::BaseState => f.write_str("0"),
             BakeTarget::AfterResponse(_, results) => {
@@ -103,6 +105,10 @@ where
     fn yoink(self) -> S {
         self.0.read().unwrap().clone()
     }
+
+    fn deep_clone(&self) -> Self {
+        Self(Arc::new(RwLock::new(self.0.read().unwrap().clone())))
+    }
 }
 
 impl<S: WordScorer> WordScorer for TakeableScorer<S> {
@@ -127,9 +133,13 @@ fn bake_for(
     dirs: &directories::ProjectDirs,
     bank: &WordBank,
     target: BakeTarget<'_>,
-) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
+) -> anyhow::Result<(
+    MaxScoreGuesser<TakeableScorer<MaxComboEliminationsScorer>>,
+    TakeableScorer<MaxComboEliminationsScorer>,
+)> {
     let data_path = dirs.data_dir();
-    let final_path = data_path.join("guesser");
+
+    println!("baking {}", target.ident());
 
     let partial_suffix = ".partial";
     let bank_progress_path = {
@@ -171,9 +181,7 @@ fn bake_for(
             if !std::fs::exists(final_path)
                 .with_context(|| format!("check if {} exists", final_path.display()))?
             {
-                let mut w = words().map(Arc::from).collect::<Vec<Arc<str>>>();
-                w.sort_unstable();
-                w
+                WORDS.into_iter().map(Arc::from).collect::<Vec<Arc<str>>>()
             } else {
                 Default::default()
             },
@@ -181,31 +189,33 @@ fn bake_for(
         )
     };
 
-    let guesser = if !bank_todo.is_empty() {
-        let scorer = match target {
-            BakeTarget::BaseState =>
-            {
-                #[expect(clippy::expect_used, reason = "i read the code man")]
+    let (mut guesser, scorer) = match target {
+        BakeTarget::BaseState => {
+            #[expect(clippy::expect_used, reason = "i read the code man")]
+            let scorer = TakeableScorer::new(
                 MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)
-                    .expect("appears to be infallible")
-            }
-            BakeTarget::AfterResponse(scorer, results) => {
-                let mut scorer = TakeableScorer::new(scorer.clone());
-                let mut guesser = MaxScoreGuesser::new(
-                    GuessFrom::AllUnguessedWords,
-                    bank.clone(),
-                    scorer.clone(),
-                );
-                let guess = guesser.select_next_guess().context("best next guess")?;
-                guesser.update(&GuessResult {
-                    guess: &guess,
-                    results: results.to_owned(),
-                })?;
+                    .expect("appears to be infallible"),
+            );
+            (
+                MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone()),
+                scorer,
+            )
+        }
+        BakeTarget::AfterResponse(scorer, results) => {
+            let scorer = TakeableScorer::new(scorer.clone());
+            let mut guesser =
+                MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone());
+            let guess = guesser.select_next_guess().context("best next guess")?;
+            guesser.update(&GuessResult {
+                guess: &guess,
+                results: results.to_owned(),
+            })?;
 
-                scorer.yoink()
-            }
-        };
+            (guesser, scorer)
+        }
+    };
 
+    guesser = guesser.with_scores(&if !bank_todo.is_empty() {
         let bar = indicatif::ProgressBar::new((bank_todo.len() + bank_progress.len()) as u64);
         bar.set_position(bank_progress.len() as u64);
 
@@ -227,15 +237,14 @@ fn bake_for(
                     Ordering::Relaxed,
                 )
             {
-                let _ = save_progress(&dirs, target, &bank_progress);
+                let _ = save_progress(dirs, target, &bank_progress);
             }
         });
 
         bar.finish();
-        let guesser = MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer)
-            .with_scores(&bank_progress.into_iter().collect());
 
-        oxicode::serde::encode_serde_to_file(&guesser, &final_path)
+        let scores = bank_progress.into_iter().collect::<HashMap<_, _>>();
+        oxicode::serde::encode_serde_to_file(&scores, final_path)
             .with_context(|| format!("save baked guesser to {}", final_path.display()))?;
         std::fs::remove_file(&bank_progress_path)
             .with_context(|| format!("delete progress file {}", bank_progress_path.display()))?;
@@ -246,13 +255,13 @@ fn bake_for(
             std::fs::metadata(final_path)?.len()
         );
 
-        guesser
+        scores
     } else {
         oxicode::serde::decode_serde_from_file(final_path)
             .with_context(|| format!("load baked guesser from {}", final_path.display()))?
-    };
+    });
 
-    Ok(guesser)
+    Ok((guesser, scorer))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -265,7 +274,23 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(data_path)
         .with_context(|| format!("can't create {}", data_path.display()))?;
 
-    let base_guesser = bake_for(&dirs, &bank, BakeTarget::BaseState)?;
+    let (_base_guesser, base_scorer) = bake_for(&dirs, &bank, BakeTarget::BaseState)?;
+    for result in core::iter::repeat_n(
+        [
+            LetterResult::NotPresent,
+            LetterResult::PresentNotHere,
+            LetterResult::Correct,
+        ],
+        bank.word_length(),
+    )
+    .multi_cartesian_product()
+    {
+        bake_for(
+            &dirs,
+            &bank,
+            BakeTarget::AfterResponse(&base_scorer.0.read().unwrap(), &result),
+        )?;
+    }
 
     Ok(())
 }
