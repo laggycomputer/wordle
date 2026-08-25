@@ -59,15 +59,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
-name = "arrayvec-const"
-version = "0.7.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b4561611ba270637bfa00e98dac763ab6c325dfce32771b2218516cb27941fe"
-dependencies = [
- "const_panic",
-]
-
-[[package]]
 name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -615,15 +606,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
-name = "sort-const"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beb9c5e87e55c5a84c167462de7fa58b9fd66f66afebe096fcf8d6105431de87"
-dependencies = [
- "arrayvec-const",
-]
-
-[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -798,7 +780,6 @@ dependencies = [
  "oxicode",
  "rayon",
  "rs-wordle-solver",
- "sort-const",
 ]
 
 [[package]]
