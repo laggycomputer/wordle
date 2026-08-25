@@ -22,6 +22,8 @@ struct Options {
     simulate: Option<String>,
 }
 
+// TODO load bake
+
 fn main() -> anyhow::Result<()> {
     let mut opts = Options::parse();
 
