@@ -24,6 +24,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::RwLock;
 use wordle::WORDS_ARC;
+use wordle::time;
 use wordle::word_bank;
 
 #[derive(Clone, Copy)]
@@ -219,46 +220,49 @@ fn bake_for(
     };
 
     guesser = guesser.with_scores(&if !bank_todo.is_empty() {
-        let bar = indicatif::ProgressBar::new((bank_todo.len() + bank_progress.len()) as u64);
-        bar.set_position(bank_progress.len() as u64);
+        time("bake missing words", || {
+            let bar = indicatif::ProgressBar::new((bank_todo.len() + bank_progress.len()) as u64);
+            bar.set_position(bank_progress.len() as u64);
 
-        let n_uncommitted = AtomicUsize::new(0);
-        let parallelism = std::thread::available_parallelism().map_or(1, NonZero::<usize>::get);
+            let n_uncommitted = AtomicUsize::new(0);
+            let parallelism = std::thread::available_parallelism().map_or(1, NonZero::<usize>::get);
 
-        bank_todo.par_iter().for_each(|w| {
-            let score = scorer.score_word(w);
-            bank_progress.insert(w.clone(), score);
-            bar.inc(1);
-            n_uncommitted.fetch_add(1, Ordering::Relaxed);
+            bank_todo.par_iter().for_each(|w| {
+                let score = scorer.score_word(w);
+                bank_progress.insert(w.clone(), score);
+                bar.inc(1);
+                n_uncommitted.fetch_add(1, Ordering::Relaxed);
 
-            let loaded = n_uncommitted.load(Ordering::Acquire);
-            if loaded >= parallelism
-                && let Ok(_) = n_uncommitted.compare_exchange_weak(
-                    loaded,
-                    0,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                )
-            {
-                let _ = save_progress(dirs, target, &bank_progress);
-            }
-        });
+                let loaded = n_uncommitted.load(Ordering::Acquire);
+                if loaded >= parallelism
+                    && let Ok(_) = n_uncommitted.compare_exchange_weak(
+                        loaded,
+                        0,
+                        Ordering::Release,
+                        Ordering::Relaxed,
+                    )
+                {
+                    let _ = save_progress(dirs, target, &bank_progress);
+                }
+            });
 
-        bar.finish();
+            bar.finish();
 
-        let scores = bank_progress.into_iter().collect::<HashMap<_, _>>();
-        oxicode::serde::encode_serde_to_file(&scores, final_path)
-            .with_context(|| format!("save baked guesser to {}", final_path.display()))?;
-        std::fs::remove_file(&bank_progress_path)
-            .with_context(|| format!("delete progress file {}", bank_progress_path.display()))?;
-        eprintln!(
-            "saved baked guesser in state {} to {} ({} bytes)",
-            target.ident(),
-            final_path.display(),
-            std::fs::metadata(final_path)?.len()
-        );
+            let scores = bank_progress.into_iter().collect::<HashMap<_, _>>();
+            oxicode::serde::encode_serde_to_file(&scores, final_path)
+                .with_context(|| format!("save baked guesser to {}", final_path.display()))?;
+            std::fs::remove_file(&bank_progress_path).with_context(|| {
+                format!("delete progress file {}", bank_progress_path.display())
+            })?;
+            eprintln!(
+                "saved baked guesser in state {} to {} ({} bytes)",
+                target.ident(),
+                final_path.display(),
+                std::fs::metadata(final_path)?.len()
+            );
 
-        scores
+            anyhow::Ok(scores)
+        })?
     } else {
         oxicode::serde::decode_serde_from_file(final_path)
             .with_context(|| format!("load baked guesser from {}", final_path.display()))?
