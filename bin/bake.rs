@@ -90,6 +90,8 @@ fn main() -> anyhow::Result<()> {
         bar.set_position(bank_progress.len() as u64);
 
         let n_uncommitted = AtomicUsize::new(0);
+        let parallelism = std::thread::available_parallelism().map_or(1, NonZero::<usize>::get);
+
         bank_todo.par_iter().for_each(|w| {
             let score = scorer.score_word(w);
             bank_progress.insert(w.clone(), score);
@@ -97,7 +99,7 @@ fn main() -> anyhow::Result<()> {
             n_uncommitted.fetch_add(1, Ordering::Relaxed);
 
             let loaded = n_uncommitted.load(Ordering::Acquire);
-            if loaded >= std::thread::available_parallelism().map_or(1, NonZero::<usize>::get)
+            if loaded >= parallelism
                 && let Ok(_) = n_uncommitted.compare_exchange_weak(
                     loaded,
                     0,
