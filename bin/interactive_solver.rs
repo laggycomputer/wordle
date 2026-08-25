@@ -75,9 +75,11 @@ fn main() -> anyhow::Result<()> {
         io::stdout().flush()?;
 
         let mut how_many_total = opts.next_n;
+        let mut round = 0;
 
         let guess = loop {
-            print!("enter your guess (word or index) or !more <x>: ");
+            round += 1;
+            print!("round {round}, enter your guess (word or index) or !more <x>: ");
             io::stdout().flush()?;
             buf.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
