@@ -70,7 +70,7 @@ fn save_progress(
 
     let bank_progress_path = {
         let mut p = data_path.join("");
-        write!(p.as_mut_os_string(), "{}", target.ident())?;
+        write!(p.as_mut_os_string(), "{}.partial", target.ident())?;
         p
     };
 
