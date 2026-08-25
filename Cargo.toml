@@ -38,8 +38,7 @@ debug = "full"
 
 [lints.rust]
 ambiguous_negative_literals = "warn"
-# enable when the ecosystem supports these better and targetting a supporting rust version
-# closure_returning_async_block = "warn"
+closure_returning_async_block = "warn"
 deref_into_dyn_supertrait = "warn"
 elided_lifetimes_in_paths = "deny"
 explicit_outlives_requirements = "warn"
