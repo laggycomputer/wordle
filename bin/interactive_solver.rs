@@ -49,7 +49,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut first_guess = true;
-    let mut buf = String::with_capacity(5);
+    let word_length = bank.word_length();
+    let mut buf = String::with_capacity(word_length);
 
     while guesser.possible_words().len() > 1 {
         let guesses = time(
@@ -95,9 +96,11 @@ fn main() -> anyhow::Result<()> {
                     _ => {}
                 }
             }
-            if let Ok(p @ ..5) = trimmed.parse::<usize>() {
+            if let Ok(p) = trimmed.parse::<usize>()
+                && p < how_many_total
+            {
                 break guesses[p - 1].guess.clone();
-            } else if trimmed.len() == 5
+            } else if trimmed.len() == word_length
                 && trimmed.chars().all(|c| c.is_ascii_alphabetic())
                 && bank.iter().any(|w| w.eq_ignore_ascii_case(trimmed))
             {
@@ -112,7 +115,7 @@ fn main() -> anyhow::Result<()> {
             rs_wordle_solver::get_result_for_guess(s, &guess)
                 .context("result for guess against simulated target")?
         } else {
-            let mut outcome = Vec::with_capacity(5);
+            let mut outcome = Vec::with_capacity(word_length);
             'outcome: loop {
                 print!("enter the outcome, b/y/g: ");
                 io::stdout().flush()?;
@@ -127,7 +130,7 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 // Eb Eb Eb Eb Bb Db
-                for c in buf.chars().take(5) {
+                for c in buf.chars().take(word_length) {
                     outcome.push(match c {
                         'b' | 'B' => LetterResult::NotPresent,
                         'y' | 'Y' => LetterResult::PresentNotHere,
