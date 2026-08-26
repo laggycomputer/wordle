@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::Duration;
+use indicatif::ProgressDrawTarget;
 use wordle::WORDS;
 use wordle::time;
 use wordle::word_bank;
@@ -193,6 +194,7 @@ fn bake_for(
                 bank_todo.len()
             );
             let bar = indicatif::ProgressBar::new(store_shape[0]);
+            bar.set_draw_target(ProgressDrawTarget::stderr());
             bar.set_position(loaded_bake_progress);
             bar.enable_steady_tick(Duration::from_secs(1));
             bar.force_draw();
@@ -206,7 +208,7 @@ fn bake_for(
                     &[score],
                 ) {
                     Ok(_) => (),
-                    Err(e) => eprintln!("{e}"),
+                    Err(e) => bar.println(format!("err storing: {e}")),
                 };
                 bar.inc(1);
             });
