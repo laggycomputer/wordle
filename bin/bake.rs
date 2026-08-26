@@ -2,7 +2,6 @@ use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
 use core::time::Duration;
-use std::collections::HashMap;
 use indicatif::ProgressStyle;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
@@ -15,6 +14,7 @@ use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use wordle::WORDS;
@@ -102,17 +102,25 @@ fn bake_for(
         (w, s)
     };
 
+    let done_store =
+        ArrayBuilder::new([1], [1], data_type::bool(), 0u8).build(store.clone(), "/done")?;
+    let done = done_store.retrieve_array_subset::<Vec<bool>>(&done_store.subset_all())?[0];
+
     let s_store = Arc::new(s_store);
 
     let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
     let mut scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
     let bank_todo = {
-        words
-            .iter()
-            .zip(&scores)
-            .filter_map(|(w, s)| (*s == i64::MIN).then_some(Arc::from(w.as_str())))
-            .collect::<Vec<_>>()
+        if !done {
+            words
+                .iter()
+                .zip(&scores)
+                .filter_map(|(w, s)| (*s == i64::MIN).then_some(Arc::from(w.as_str())))
+                .collect::<Vec<_>>()
+        } else {
+            Default::default()
+        }
     };
 
     let mut guesser = match target {
@@ -206,7 +214,11 @@ fn bake_for(
         })?
     } else {
         eprintln!("{} was already baked", target.ident());
-        words.into_iter().map(Arc::from).zip(scores).collect::<HashMap<_, _>>()
+        words
+            .into_iter()
+            .map(Arc::from)
+            .zip(scores)
+            .collect::<HashMap<_, _>>()
     };
 
     dbg!(scores.len());
