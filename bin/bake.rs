@@ -23,6 +23,7 @@ use wordle::word_bank;
 use zarrs::array::Array;
 use zarrs::array::ArrayBuilder;
 use zarrs::array::ArraySubset;
+use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
 use zarrs::storage::ReadableWritableListableStorage;
 
@@ -102,8 +103,8 @@ fn bake_for(
         (w, s)
     };
 
-    let done_store =
-        ArrayBuilder::new([1], [1], data_type::bool(), 0u8).build(store.clone(), "/done")?;
+    let done_store = ArrayBuilder::new([1], [1], data_type::bool(), FillValueMetadata::Bool(false))
+        .build(store.clone(), "/done")?;
     let done = done_store.retrieve_array_subset::<Vec<bool>>(&done_store.subset_all())?[0];
 
     let s_store = Arc::new(s_store);
