@@ -131,16 +131,12 @@ fn bake_for(
             .build(store.clone(), "/")?
             .store_metadata()?;
 
-        let chunk_shape = std::iter::repeat_n(1000u64, WORDS.len() / 1000)
-            .chain(NonZeroU64::new((WORDS.len() % 1000) as u64).map(NonZeroU64::get))
-            .collect::<Vec<_>>();
-
-        let w = ArrayBuilder::new(store_shape, &*chunk_shape, data_type::string(), "")
+        let w = ArrayBuilder::new(store_shape, [1000], data_type::string(), "")
             .build(store.clone(), "/word")?;
         w.store_metadata()?;
         w.store_array_subset(&subset_all, &*WORDS)?;
 
-        let s = ArrayBuilder::new(store_shape, &*chunk_shape, data_type::int64(), i64::MIN)
+        let s = ArrayBuilder::new(store_shape, [1000], data_type::int64(), i64::MIN)
             .build(store.clone(), "/score")?;
         s.store_metadata()?;
 
