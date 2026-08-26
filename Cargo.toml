@@ -18,7 +18,6 @@ oxicode = { version = "0.2.6", features = ["compression", "compression-zstd", "s
 rayon = "1.12.0"
 rs-wordle-solver = { path = "./rs_wordle_solver/lib", features = ["serde"] }
 zarrs = { version = "0.23.14", features = ["filesystem"] }
-console = "0.16.4"
 
 [[bin]]
 name = "bake"
