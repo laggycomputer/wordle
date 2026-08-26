@@ -1,7 +1,6 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
-use indicatif::ProgressDrawTarget;
 use indicatif::ProgressStyle;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
@@ -14,7 +13,6 @@ use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
-use std::io::Write as _;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
