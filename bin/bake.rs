@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
+use std::io::Write;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
@@ -189,6 +190,7 @@ fn bake_for(
                 store_shape[0],
                 bank_todo.len()
             );
+            let _ = std::io::stderr().flush();
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_position(loaded_bake_progress);
             bar.force_draw();
