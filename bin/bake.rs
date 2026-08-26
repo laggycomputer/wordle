@@ -67,7 +67,7 @@ impl core::fmt::Display for BakeTargetIdent<'_> {
 }
 
 fn bake_for(
-    store: ReadableWritableListableStorage,
+    store: &ReadableWritableListableStorage,
     bank: &WordBank,
     target: BakeTarget<'_>,
 ) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
@@ -207,7 +207,7 @@ fn bake_for(
             drop(score_tx);
             bar.finish();
 
-            eprintln!("baked scores done for state {}", target.ident(),);
+            eprintln!("baked scores done for state {}", target.ident());
 
             let scores = cron.join().ok().context("join cron")?;
             done_store.store_metadata()?;
@@ -242,7 +242,7 @@ fn main() -> anyhow::Result<()> {
     let store_path = data_path.join("baked.store");
     let store = Arc::new(FilesystemStore::new(&store_path)?) as ReadableWritableListableStorage;
 
-    if (Array::open(store.clone(), "/word").is_err()) {
+    if Array::open(store.clone(), "/word").is_err() {
         eprintln!("creating store {}", store_path.display());
 
         zarrs::group::GroupBuilder::new()
@@ -256,7 +256,7 @@ fn main() -> anyhow::Result<()> {
         w.store_array_subset(&w.subset_all(), &*WORDS)?;
     }
 
-    let base_guesser = bake_for(store.clone(), &bank, BakeTarget::BaseState)?;
+    let base_guesser = bake_for(&store, &bank, BakeTarget::BaseState)?;
     for result in core::iter::repeat_n(
         [
             LetterResult::NotPresent,
@@ -268,7 +268,7 @@ fn main() -> anyhow::Result<()> {
     .multi_cartesian_product()
     {
         bake_for(
-            store.clone(),
+            &store,
             &bank,
             BakeTarget::AfterResponse(&base_guesser, &result),
         )?;
