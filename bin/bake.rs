@@ -16,6 +16,7 @@ use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::mpsc::TryRecvError;
 use std::time::SystemTime;
 use wordle::WORDS;
 use wordle::time;
@@ -169,7 +170,18 @@ fn bake_for(
                 move || {
                     let subset_all = s_store.subset_all();
                     let mut last_store = SystemTime::now();
-                    while let Ok((i, score)) = score_rx.recv() {
+                    'try_recv: loop {
+                        let (i, score) = match score_rx.try_recv() {
+                            Ok((i, score)) => (i, score),
+                            Err(TryRecvError::Empty) => {
+                                std::thread::sleep(Duration::from_secs(10));
+                                continue 'try_recv;
+                            }
+                            Err(TryRecvError::Disconnected) => {
+                                break 'try_recv;
+                            }
+                        };
+
                         scores[i] = score;
 
                         let elapsed = last_store.elapsed();
