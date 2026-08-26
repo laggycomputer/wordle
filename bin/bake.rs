@@ -190,10 +190,10 @@ fn bake_for(
                 store_shape[0],
                 bank_todo.len()
             );
-            let _ = std::io::stderr().flush();
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_position(loaded_bake_progress);
             bar.force_draw();
+            let _ = std::io::stderr().flush();
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = scorer.score_word(w);
