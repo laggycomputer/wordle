@@ -198,7 +198,7 @@ fn bake_for(
                 store_path.display(),
             );
 
-            let scores = cron.join().ok().context("join cron")?.to_vec();
+            let scores = cron.join().ok().context("join cron")?;
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
