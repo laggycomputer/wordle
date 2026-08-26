@@ -1,7 +1,6 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
-use core::num::NonZeroU64;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
