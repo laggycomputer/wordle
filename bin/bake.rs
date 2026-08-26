@@ -183,8 +183,14 @@ fn bake_for(
         time("bake missing words", || {
             let scores = Mutex::new(scores);
 
+            let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
+            eprintln!(
+                "baked {loaded_bake_progress}/{}; baking {} more...",
+                store_shape[0],
+                bank_todo.len()
+            );
             let bar = indicatif::ProgressBar::new(store_shape[0]);
-            bar.set_position(store_shape[0] - bank_todo.len() as u64);
+            bar.set_position(loaded_bake_progress);
             bar.force_draw();
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
