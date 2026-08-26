@@ -201,9 +201,10 @@ fn bake_for(
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = scorer.score_word(w);
                 scores.lock().unwrap()[i] = score;
-                match s_store
-                    .store_array_subset(&ArraySubset::new_with_shape(vec![i as u64]), &[score])
-                {
+                match s_store.store_array_subset(
+                    &ArraySubset::new_with_start_shape(vec![i as u64], vec![1]).unwrap(),
+                    &[score],
+                ) {
                     Ok(_) => (),
                     Err(e) => eprintln!("{e}"),
                 };
