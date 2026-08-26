@@ -108,7 +108,7 @@ fn bake_for(
 )> {
     let data_path = dirs.data_dir();
 
-    println!("baking {}", target.ident());
+    eprintln!("baking {}", target.ident());
 
     let store_path = {
         let mut p = data_path.join("");

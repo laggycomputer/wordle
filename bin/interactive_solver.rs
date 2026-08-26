@@ -70,17 +70,17 @@ fn main() -> anyhow::Result<()> {
         );
 
         for (i, g) in guesses.iter().enumerate() {
-            println!("{}. {} ({})", i + 1, g.guess, g.score);
+            eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
         }
-        io::stdout().flush()?;
+        io::stderr().flush()?;
 
         let mut how_many_total = opts.next_n;
         let mut round = 0;
 
         let guess = loop {
             round += 1;
-            print!("round {round}, enter your guess (word or index) or !more <x>: ");
-            io::stdout().flush()?;
+            eprint!("round {round}, enter your guess (word or index) or !more <x>: ");
+            io::stderr().flush()?;
             buf.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
 
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
                         how_many_total += how_many_more;
                         let more = guesser.select_top_n_guesses(how_many_total);
                         for (i, g) in more.iter().enumerate().skip(how_many_total - how_many_more) {
-                            println!("{}. {} ({})", i + 1, g.guess, g.score);
+                            eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
                         }
                         guesses = more;
                     }
@@ -128,14 +128,14 @@ fn main() -> anyhow::Result<()> {
                     LetterResult::NotPresent => 'b',
                 })
                 .for_each(|l| print!("{l}"));
-            println!();
+            eprintln!();
 
             result
         } else {
             let mut outcome = Vec::with_capacity(word_length);
             'outcome: loop {
                 print!("enter the outcome, b/y/g: ");
-                io::stdout().flush()?;
+                io::stderr().flush()?;
 
                 buf.clear();
                 outcome.clear();
@@ -153,7 +153,7 @@ fn main() -> anyhow::Result<()> {
                         'y' | 'Y' => LetterResult::PresentNotHere,
                         'g' | 'G' => LetterResult::Correct,
                         _ => {
-                            println!();
+                            eprintln!();
                             continue 'outcome;
                         }
                     });
@@ -172,8 +172,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     match &guesser.possible_words() {
-        [one] => println!("the game is solved: {one}"),
-        [] => println!("game is inconsistent :("),
+        [one] => eprintln!("the game is solved: {one}"),
+        [] => eprintln!("game is inconsistent :("),
         _ => unreachable!("we should be looping"),
     }
 
