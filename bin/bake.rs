@@ -210,6 +210,8 @@ fn bake_for(
             );
 
             let scores = scores.into_inner()?;
+            s_store.store_array_subset(&subset_all, &scores)?;
+
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
