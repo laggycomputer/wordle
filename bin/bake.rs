@@ -1,7 +1,6 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
-use std::io::Write as _;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
@@ -16,6 +15,7 @@ use rs_wordle_solver::WordleError;
 use rs_wordle_solver::details::WordRestrictions;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use rs_wordle_solver::scorers::WordScorer;
+use std::io::Write as _;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
@@ -200,8 +200,12 @@ fn bake_for(
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = scorer.score_word(w);
                 scores.lock().unwrap()[i] = score;
-                let _ = s_store
-                    .store_array_subset(&ArraySubset::new_with_shape(vec![i as u64]), &[score]);
+                match s_store
+                    .store_array_subset(&ArraySubset::new_with_shape(vec![i as u64]), &[score])
+                {
+                    Ok(_) => (),
+                    Err(e) => eprintln!("{e}"),
+                };
                 bar.inc(1);
             });
 
