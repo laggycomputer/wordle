@@ -193,7 +193,7 @@ fn bake_for(
             bar.finish();
 
             eprintln!(
-                "baked guesser is finished in state {} at {}",
+                "baked scores done for state {} at {}",
                 target.ident(),
                 store_path.display(),
             );
