@@ -176,6 +176,11 @@ fn bake_for(
 
                         std::thread::sleep(Duration::from_secs(1));
                     }
+
+                    match s_store.store_array_subset(&subset_all, &**scores.lock().unwrap()) {
+                        Ok(_) => (),
+                        Err(e) => bar.println(format!("err storing: {e}")),
+                    }
                 }
             });
             bar.enable_steady_tick(Duration::from_secs(1));
@@ -201,7 +206,6 @@ fn bake_for(
                 .context("we should be the sole holder")?
                 .into_inner()?
                 .to_vec();
-            s_store.store_array_subset(&subset_all, &scores)?;
 
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
