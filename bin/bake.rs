@@ -209,9 +209,7 @@ fn bake_for(
                 store_path.display(),
             );
 
-            dbg!();
             let scores = cron.join().ok().context("join cron")?;
-            dbg!();
             done_store.store_metadata()?;
             done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
@@ -226,9 +224,7 @@ fn bake_for(
             .collect::<HashMap<_, _>>()
     };
 
-    dbg!(scores.len());
     guesser = guesser.with_scores(&scores);
-    dbg!();
 
     Ok(guesser)
 }
