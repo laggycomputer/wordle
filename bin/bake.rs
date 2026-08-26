@@ -29,7 +29,6 @@ use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
-use zarrs::storage::StoreKey;
 use zarrs::storage::StorePrefix;
 use zarrs::storage::WritableStorageTraits as _;
 
