@@ -77,11 +77,11 @@ fn bake_for(
     let subset_all = ArraySubset::new_with_shape(vec![WORDS.len() as u64]);
     // could be other fs e.g. permission error but meh
 
-    let score_key = format!("/{}/score", target.ident());
-    let s_store = if let Ok(s) = Array::open(store.clone(), &score_key) {
+    let s_store_path = format!("/{}/score", target.ident());
+    let s_store = if let Ok(s) = Array::open(store.clone(), &s_store_path) {
         s
     } else {
-        eprintln!("creating array {score_key}");
+        eprintln!("creating array {s_store_path}");
 
         let mut s = ArrayBuilder::new(
             [WORDS.len() as u64],
@@ -89,7 +89,7 @@ fn bake_for(
             data_type::int64(),
             i64::MIN,
         )
-        .build(store.clone(), &score_key)?;
+        .build(store.clone(), &s_store_path)?;
         s.set_dimension_names(Some(vec![Some("words".to_owned())]));
         s.store_metadata()?;
 
@@ -138,7 +138,7 @@ fn bake_for(
                     done_store.store_metadata()?;
                     done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
-                    store.erase(&StoreKey::new(score_key)?)?;
+                    store.erase(&StoreKey::new(&s_store_path[1..])?)?;
                     let inconsistent_store = ArrayBuilder::new(
                         [],
                         <[u64; 0]>::default(),
