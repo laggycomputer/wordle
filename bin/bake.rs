@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
 use core::time::Duration;
+use std::collections::HashMap;
 use indicatif::ProgressStyle;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
@@ -205,10 +206,10 @@ fn bake_for(
         })?
     } else {
         eprintln!("{} was already baked", target.ident());
-        words.into_iter().map(Arc::from).zip(scores).collect()
+        words.into_iter().map(Arc::from).zip(scores).collect::<HashMap<_, _>>()
     };
 
-    dbg!();
+    dbg!(scores.len());
     guesser = guesser.with_scores(&scores);
     dbg!();
 
