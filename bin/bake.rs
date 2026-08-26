@@ -28,8 +28,9 @@ use zarrs::array::ArraySubset;
 use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
 use zarrs::filesystem::FilesystemStore;
-use zarrs::storage::{ReadableWritableListableStorage, StorePrefix};
+use zarrs::storage::ReadableWritableListableStorage;
 use zarrs::storage::StoreKey;
+use zarrs::storage::StorePrefix;
 use zarrs::storage::WritableStorageTraits as _;
 
 #[derive(Clone, Copy)]
@@ -138,7 +139,8 @@ fn bake_for(
                     done_store.store_metadata()?;
                     done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
-                    store.erase_prefix(&StorePrefix::new(&(s_store_path[1..].to_owned() + "/"))?)?;
+                    store
+                        .erase_prefix(&StorePrefix::new(&(s_store_path[1..].to_owned() + "/"))?)?;
                     let inconsistent_store = ArrayBuilder::new(
                         [],
                         <[u64; 0]>::default(),
