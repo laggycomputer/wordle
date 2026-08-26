@@ -128,6 +128,7 @@ fn bake_for(
         let s = Array::open(store.clone(), "/score")?;
         (w, s)
     } else {
+        eprintln!("creating store");
         zarrs::group::GroupBuilder::new()
             .build(store.clone(), "/")?
             .store_metadata()?;
