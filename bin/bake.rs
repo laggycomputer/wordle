@@ -15,8 +15,7 @@ use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::mpsc::TryRecvError;
+use std::time::SystemTime;
 use wordle::WORDS;
 use wordle::time;
 use wordle::word_bank;
@@ -105,7 +104,7 @@ fn bake_for(
     let s_store = Arc::new(s_store);
 
     let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
-    let scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
+    let mut scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
     let bank_todo = {
         words
@@ -138,8 +137,6 @@ fn bake_for(
     let scores = if !bank_todo.is_empty() {
         eprintln!("baking {}...", target.ident());
         time("bake missing words", || {
-            let scores = Arc::new(Mutex::new(scores.into_boxed_slice()));
-
             let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
             eprintln!(
                 "baked {loaded_bake_progress}/{}; baking {} more...",
@@ -152,43 +149,46 @@ fn bake_for(
             bar.set_style(ProgressStyle::with_template(
                 "{wide_bar} {pos}/{len} {per_sec} {elapsed_precise}/{eta_precise} remaining",
             )?);
+            bar.enable_steady_tick(Duration::from_secs(1));
 
-            let (stop_cron_tx, stop_cron_rx) = std::sync::mpsc::sync_channel::<()>(1);
+            let (score_tx, score_rx) = std::sync::mpsc::channel::<(usize, i64)>();
+
             let cron = std::thread::spawn({
                 let s_store = s_store.clone();
-                let scores = scores.clone();
                 let bar = bar.clone();
                 move || {
                     let subset_all = s_store.subset_all();
-                    loop {
-                        if matches!(
-                            stop_cron_rx.try_recv(),
-                            Ok(()) | Err(TryRecvError::Disconnected)
-                        ) {
-                            break;
-                        }
+                    let mut last_store = SystemTime::now();
+                    while let Ok((i, score)) = score_rx.recv() {
+                        scores[i] = score;
 
-                        bar.tick();
-                        match s_store.store_array_subset(&subset_all, &**scores.lock().unwrap()) {
-                            Ok(_) => (),
-                            Err(e) => bar.println(format!("err storing: {e}")),
+                        let elapsed = last_store.elapsed();
+                        if elapsed.is_err() || elapsed.unwrap() > Duration::from_secs(10) {
+                            last_store = SystemTime::now();
+                            match s_store.store_array_subset(&subset_all, &scores) {
+                                Ok(_) => (),
+                                Err(e) => bar.println(format!("err storing: {e}")),
+                            }
                         }
-
-                        std::thread::sleep(Duration::from_secs(10));
                     }
 
-                    match s_store.store_array_subset(&subset_all, &**scores.lock().unwrap()) {
+                    match s_store.store_array_subset(&subset_all, &scores) {
                         Ok(_) => (),
                         Err(e) => bar.println(format!("err storing: {e}")),
                     }
+
+                    scores
                 }
             });
 
-            bank_todo.par_iter().enumerate().for_each(|(i, w)| {
-                let score = guesser.score_word(w);
-                scores.lock().unwrap()[i] = score;
-                bar.inc(1);
-            });
+            bank_todo.par_iter().enumerate().for_each_init(
+                || score_tx.clone(),
+                |score_tx, (i, w)| {
+                    let score = guesser.score_word(w);
+                    score_tx.send((i, score)).unwrap();
+                    bar.inc(1);
+                },
+            );
 
             bar.finish();
 
@@ -198,14 +198,7 @@ fn bake_for(
                 store_path.display(),
             );
 
-            stop_cron_tx.send(())?;
-            let _ = cron.join();
-
-            let scores = Arc::into_inner(scores)
-                .context("we should be the sole holder")?
-                .into_inner()?
-                .to_vec();
-
+            let scores = cron.join().ok().context("join cron")?.to_vec();
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
