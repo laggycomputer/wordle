@@ -2,6 +2,7 @@ use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
 use indicatif::ProgressDrawTarget;
+use indicatif::ProgressStyle;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
@@ -148,6 +149,9 @@ fn bake_for(
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_draw_target(ProgressDrawTarget::stderr());
             bar.set_position(loaded_bake_progress);
+            bar.set_style(ProgressStyle::with_template(
+                "{wide_bar} {pos}/{len} {per_sec}/sec {elapsed_precise}/{eta} remaining",
+            )?);
             bar.enable_steady_tick(Duration::from_secs(1));
             bar.force_draw();
             let _ = std::io::stderr().flush();
