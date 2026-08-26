@@ -177,6 +177,7 @@ fn bake_for(
             let mut guesser =
                 MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone());
             let guess = guesser.select_next_guess().context("best next guess")?;
+            dbg!();
             guesser.update(&GuessResult {
                 guess: &guess,
                 results: results.to_owned(),
