@@ -206,7 +206,9 @@ fn bake_for(
         words.into_iter().map(Arc::from).zip(scores).collect()
     };
 
+    dbg!();
     guesser = guesser.with_scores(&scores);
+    dbg!();
 
     Ok(guesser)
 }
