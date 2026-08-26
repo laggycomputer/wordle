@@ -149,7 +149,7 @@ fn bake_for(
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_position(loaded_bake_progress);
             bar.set_style(ProgressStyle::with_template(
-                "{wide_bar} {pos}/{len} {per_sec} {elapsed_precise}/{eta} remaining",
+                "{wide_bar} {pos}/{len} {per_sec} {elapsed_precise}/{eta_precise} remaining",
             )?);
             bar.enable_steady_tick(Duration::from_secs(1));
 
