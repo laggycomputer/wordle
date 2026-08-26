@@ -29,6 +29,8 @@ use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
+use zarrs::storage::StoreKey;
+use zarrs::storage::WritableStorageTraits as _;
 
 #[derive(Clone, Copy)]
 enum BakeTarget<'o> {
@@ -132,10 +134,11 @@ fn bake_for(
                 results: results.to_owned(),
             }) {
                 Err(WordleError::InvalidResults) => {
-                    eprintln!("this state is inconsistent; storing warning");
+                    eprintln!("this state is inconsistent; deleting scores and storing warning");
                     done_store.store_metadata()?;
                     done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
+                    store.erase(&StoreKey::new(score_key)?)?;
                     let inconsistent_store = ArrayBuilder::new(
                         [],
                         <[u64; 0]>::default(),
