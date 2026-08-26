@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use anyhow::bail;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
 use core::time::Duration;
@@ -13,6 +14,7 @@ use rs_wordle_solver::Guesser as _;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
+use rs_wordle_solver::WordleError;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,6 +27,7 @@ use zarrs::array::ArrayBuilder;
 use zarrs::array::ArraySubset;
 use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
+use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
 
 #[derive(Clone, Copy)]
@@ -64,43 +67,26 @@ impl core::fmt::Display for BakeTargetIdent<'_> {
 }
 
 fn bake_for(
-    dirs: &directories::ProjectDirs,
+    store: ReadableWritableListableStorage,
     bank: &WordBank,
     target: BakeTarget<'_>,
 ) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
-    let data_path = dirs.data_dir();
-
-    let store_path = {
-        let mut p = data_path.join("");
-        write!(p.as_mut_os_string(), "{}.zarr", target.ident())?;
-        p
-    };
-
-    let store = Arc::new(zarrs::filesystem::FilesystemStore::new(&store_path)?)
-        as ReadableWritableListableStorage;
-
     let store_shape = [WORDS.len() as u64];
     let subset_all = ArraySubset::new_with_shape(vec![WORDS.len() as u64]);
     // could be other fs e.g. permission error but meh
-    let (w_store, s_store) = if let Ok(w) = Array::open(store.clone(), "/word") {
-        let s = Array::open(store.clone(), "/score")?;
-        (w, s)
+
+    let score_key = format!("/{}/score", target.ident());
+    let s_store = if let Ok(s) = Array::open(store.clone(), &score_key) {
+        s
     } else {
-        eprintln!("creating store {}", store_path.display());
-        zarrs::group::GroupBuilder::new()
-            .build(store.clone(), "/")?
-            .store_metadata()?;
+        eprintln!("creating array {score_key}");
 
-        let w = ArrayBuilder::new(store_shape, [1000], data_type::string(), "")
-            .build(store.clone(), "/word")?;
-        w.store_metadata()?;
-        w.store_array_subset(&subset_all, &*WORDS)?;
-
-        let s = ArrayBuilder::new(store_shape, [1000], data_type::int64(), i64::MIN)
-            .build(store.clone(), "/score")?;
+        let mut s = ArrayBuilder::new([WORDS.len() as u64], [1000], data_type::int64(), i64::MIN)
+            .build(store.clone(), &score_key)?;
+        s.set_dimension_names(Some(vec![Some("words".to_owned())]));
         s.store_metadata()?;
 
-        (w, s)
+        s
     };
 
     let done_store = ArrayBuilder::new([1], [1], data_type::bool(), FillValueMetadata::Bool(false))
@@ -109,7 +95,8 @@ fn bake_for(
 
     let s_store = Arc::new(s_store);
 
-    let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
+    let words =
+        Array::open(store.clone(), "/word")?.retrieve_array_subset::<Vec<String>>(&subset_all)?;
     let mut scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
     let bank_todo = {
@@ -135,10 +122,27 @@ fn bake_for(
         BakeTarget::AfterResponse(guesser, results) => {
             let mut guesser = guesser.clone();
             let guess = guesser.select_next_guess().context("best next guess")?;
-            guesser.update(&GuessResult {
+            match guesser.update(&GuessResult {
                 guess: &guess,
                 results: results.to_owned(),
-            })?;
+            }) {
+                Err(WordleError::InvalidResults) => {
+                    eprintln!("this state is inconsistent; storing warning");
+                    done_store.store_metadata()?;
+                    done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
+
+                    let inconsistent_store = ArrayBuilder::new(
+                        [],
+                        <[u64; 0]>::default(),
+                        data_type::bool(),
+                        FillValueMetadata::Bool(false),
+                    )
+                    .build(store.clone(), "/inconsistent")?;
+                    inconsistent_store.store_metadata()?;
+                }
+                Err(_) => bail!("io error updating; should not happen"),
+                Ok(_) => {}
+            }
 
             guesser
         }
@@ -203,11 +207,7 @@ fn bake_for(
             drop(score_tx);
             bar.finish();
 
-            eprintln!(
-                "baked scores done for state {} at {}",
-                target.ident(),
-                store_path.display(),
-            );
+            eprintln!("baked scores done for state {}", target.ident(),);
 
             let scores = cron.join().ok().context("join cron")?;
             done_store.store_metadata()?;
@@ -239,7 +239,24 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(data_path)
         .with_context(|| format!("can't create {}", data_path.display()))?;
 
-    let base_guesser = bake_for(&dirs, &bank, BakeTarget::BaseState)?;
+    let store_path = data_path.join("baked.store");
+    let store = Arc::new(FilesystemStore::new(&store_path)?) as ReadableWritableListableStorage;
+
+    if (Array::open(store.clone(), "/word").is_err()) {
+        eprintln!("creating store {}", store_path.display());
+
+        zarrs::group::GroupBuilder::new()
+            .build(store.clone(), "/")?
+            .store_metadata()?;
+
+        let mut w = ArrayBuilder::new([WORDS.len() as u64], [1000], data_type::string(), "")
+            .build(store.clone(), "/word")?;
+        w.set_dimension_names(Some(vec![Some("words".to_owned())]));
+        w.store_metadata()?;
+        w.store_array_subset(&w.subset_all(), &*WORDS)?;
+    }
+
+    let base_guesser = bake_for(store.clone(), &bank, BakeTarget::BaseState)?;
     for result in core::iter::repeat_n(
         [
             LetterResult::NotPresent,
@@ -251,7 +268,7 @@ fn main() -> anyhow::Result<()> {
     .multi_cartesian_product()
     {
         bake_for(
-            &dirs,
+            store.clone(),
             &bank,
             BakeTarget::AfterResponse(&base_guesser, &result),
         )?;
