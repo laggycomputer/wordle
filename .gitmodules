@@ -1,0 +1,3 @@
+[submodule "rs_wordle_solver"]
+	path = rs_wordle_solver
+	url = https://github.com/MorganR/rs-wordle-solver/

@@ -12,14 +12,10 @@ use rs_wordle_solver::Guesser as _;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
 use rs_wordle_solver::WordBank;
-use rs_wordle_solver::WordleError;
-use rs_wordle_solver::details::WordRestrictions;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
-use rs_wordle_solver::scorers::WordScorer;
 use std::io::Write as _;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::RwLock;
 use std::time::Duration;
 use wordle::WORDS;
 use wordle::time;
@@ -33,7 +29,10 @@ use zarrs::storage::ReadableWritableListableStorage;
 #[derive(Clone, Copy)]
 enum BakeTarget<'o> {
     BaseState,
-    AfterResponse(&'o MaxComboEliminationsScorer, &'o [LetterResult]),
+    AfterResponse(
+        &'o MaxScoreGuesser<MaxComboEliminationsScorer>,
+        &'o [LetterResult],
+    ),
 }
 
 struct BakeTargetIdent<'o>(BakeTarget<'o>);
@@ -63,52 +62,11 @@ impl core::fmt::Display for BakeTargetIdent<'_> {
     }
 }
 
-struct TakeableScorer<S: WordScorer>(Arc<RwLock<S>>);
-
-impl<S> Clone for TakeableScorer<S>
-where
-    S: WordScorer,
-{
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-impl<S> TakeableScorer<S>
-where
-    S: WordScorer,
-{
-    fn new(scorer: S) -> Self {
-        Self(Arc::new(RwLock::new(scorer)))
-    }
-}
-
-impl<S: WordScorer> WordScorer for TakeableScorer<S> {
-    fn update(
-        &mut self,
-        latest_guess: &str,
-        restrictions: &WordRestrictions,
-        possible_words: &[Arc<str>],
-    ) -> Result<(), WordleError> {
-        self.0
-            .write()
-            .unwrap()
-            .update(latest_guess, restrictions, possible_words)
-    }
-
-    fn score_word(&self, word: &Arc<str>) -> i64 {
-        self.0.read().unwrap().score_word(word)
-    }
-}
-
 fn bake_for(
     dirs: &directories::ProjectDirs,
     bank: &WordBank,
     target: BakeTarget<'_>,
-) -> anyhow::Result<(
-    MaxScoreGuesser<TakeableScorer<MaxComboEliminationsScorer>>,
-    TakeableScorer<MaxComboEliminationsScorer>,
-)> {
+) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
     let data_path = dirs.data_dir();
 
     eprintln!("baking {}", target.ident());
@@ -160,38 +118,30 @@ fn bake_for(
     };
     dbg!();
 
-    let (mut guesser, scorer) = match target {
+    let mut guesser = match target {
         BakeTarget::BaseState => {
             #[expect(clippy::expect_used, reason = "i read the code man")]
-            let scorer = TakeableScorer::new(
+            let scorer =
                 MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)
-                    .expect("appears to be infallible"),
-            );
-            (
-                MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone()),
-                scorer,
-            )
+                    .expect("appears to be infallible");
+            MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer)
         }
-        BakeTarget::AfterResponse(scorer, results) => {
-            dbg!();
-            let scorer = TakeableScorer::new(scorer.clone());
-            dbg!();
-            let mut guesser =
-                MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone());
-            dbg!();
+        BakeTarget::AfterResponse(guesser, results) => {
+            let mut guesser = guesser.clone();
             let guess = guesser.select_next_guess().context("best next guess")?;
             dbg!();
             guesser.update(&GuessResult {
                 guess: &guess,
                 results: results.to_owned(),
             })?;
+            dbg!();
 
-            (guesser, scorer)
+            guesser
         }
     };
 
     dbg!();
-    guesser = guesser.with_scores(&if !bank_todo.is_empty() {
+    let scores = if !bank_todo.is_empty() {
         time("bake missing words", || {
             let scores = Mutex::new(scores);
             eprintln!("is_term: {}", console::Term::stderr().is_term());
@@ -210,7 +160,7 @@ fn bake_for(
             let _ = std::io::stderr().flush();
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
-                let score = scorer.score_word(w);
+                let score = guesser.score_word(w);
                 scores.lock().unwrap()[i] = score;
                 match s_store.store_array_subset(
                     &ArraySubset::new_with_start_shape(vec![i as u64], vec![1]).unwrap(),
@@ -237,9 +187,11 @@ fn bake_for(
         })?
     } else {
         words.into_iter().map(Arc::from).zip(scores).collect()
-    });
+    };
 
-    Ok((guesser, scorer))
+    guesser = guesser.with_scores(&scores);
+
+    Ok(guesser)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -252,7 +204,7 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(data_path)
         .with_context(|| format!("can't create {}", data_path.display()))?;
 
-    let (_base_guesser, base_scorer) = bake_for(&dirs, &bank, BakeTarget::BaseState)?;
+    let base_guesser = bake_for(&dirs, &bank, BakeTarget::BaseState)?;
     for result in core::iter::repeat_n(
         [
             LetterResult::NotPresent,
@@ -266,7 +218,7 @@ fn main() -> anyhow::Result<()> {
         bake_for(
             &dirs,
             &bank,
-            BakeTarget::AfterResponse(&base_scorer.0.read().unwrap(), &result),
+            BakeTarget::AfterResponse(&base_guesser, &result),
         )?;
     }
 
