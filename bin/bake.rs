@@ -210,9 +210,6 @@ fn bake_for(
             );
 
             let scores = cron.join().ok().context("join cron")?;
-            done_store.store_metadata()?;
-            done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
-
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
@@ -225,6 +222,8 @@ fn bake_for(
     };
 
     guesser = guesser.with_scores(&scores);
+    done_store.store_metadata()?;
+    done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
     Ok(guesser)
 }
