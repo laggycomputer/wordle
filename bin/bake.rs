@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
-use std::io::Write;
+use std::io::Write as _;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
