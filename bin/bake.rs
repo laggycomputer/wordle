@@ -185,6 +185,7 @@ fn bake_for(
 
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_position(store_shape[0] - bank_todo.len() as u64);
+            bar.force_draw();
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = scorer.score_word(w);
