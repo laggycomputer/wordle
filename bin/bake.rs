@@ -95,7 +95,7 @@ fn bake_for(
     };
 
     let done_store = ArrayBuilder::new([1], [1], data_type::bool(), FillValueMetadata::Bool(false))
-        .build(store.clone(), "/done")?;
+        .build(store.clone(), &format!("/{}/done", target.ident()))?;
     let done = done_store.retrieve_array_subset::<Vec<bool>>(&done_store.subset_all())?[0];
 
     let s_store = Arc::new(s_store);
@@ -142,7 +142,7 @@ fn bake_for(
                         data_type::bool(),
                         FillValueMetadata::Bool(false),
                     )
-                    .build(store.clone(), "/inconsistent")?;
+                    .build(store.clone(), &format!("/{}/inconsistent", target.ident()))?;
                     inconsistent_store.store_metadata()?;
                 }
                 Err(_) => bail!("io error updating; should not happen"),
