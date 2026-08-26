@@ -107,8 +107,6 @@ fn bake_for(
     let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
     let scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
-    dbg!();
-
     let bank_todo = {
         words
             .iter()
@@ -116,7 +114,6 @@ fn bake_for(
             .filter_map(|(w, s)| (*s == i64::MIN).then_some(Arc::from(w.as_str())))
             .collect::<Vec<_>>()
     };
-    dbg!();
 
     let mut guesser = match target {
         BakeTarget::BaseState => {
@@ -129,22 +126,18 @@ fn bake_for(
         BakeTarget::AfterResponse(guesser, results) => {
             let mut guesser = guesser.clone();
             let guess = guesser.select_next_guess().context("best next guess")?;
-            dbg!();
             guesser.update(&GuessResult {
                 guess: &guess,
                 results: results.to_owned(),
             })?;
-            dbg!();
 
             guesser
         }
     };
 
-    dbg!();
     let scores = if !bank_todo.is_empty() {
         time("bake missing words", || {
             let scores = Mutex::new(scores);
-            eprintln!("is_term: {}", console::Term::stderr().is_term());
 
             let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
             eprintln!(
