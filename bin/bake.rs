@@ -174,7 +174,7 @@ fn bake_for(
                             Err(e) => bar.println(format!("err storing: {e}")),
                         }
 
-                        std::thread::sleep(Duration::from_secs(1));
+                        std::thread::sleep(Duration::from_secs(10));
                     }
 
                     match s_store.store_array_subset(&subset_all, &**scores.lock().unwrap()) {
@@ -183,7 +183,6 @@ fn bake_for(
                     }
                 }
             });
-            bar.enable_steady_tick(Duration::from_secs(10));
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = guesser.score_word(w);
