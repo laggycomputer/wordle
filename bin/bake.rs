@@ -183,7 +183,7 @@ fn bake_for(
                     }
                 }
             });
-            bar.enable_steady_tick(Duration::from_secs(1));
+            bar.enable_steady_tick(Duration::from_secs(10));
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = guesser.score_word(w);
