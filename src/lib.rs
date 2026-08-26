@@ -1,3 +1,4 @@
+use std::io::Write;
 use konst::iter::collect_const;
 use rs_wordle_solver::WordBank;
 use rs_wordle_solver::WordleError;
@@ -12,7 +13,8 @@ where
     let start = Instant::now();
     let r = func();
     let duration = start.elapsed();
-    println!("{phase} in {}", humantime::format_duration(duration));
+    eprintln!("{phase} in {}", humantime::format_duration(duration));
+    let _ = std::io::stderr().flush();
     r
 }
 
