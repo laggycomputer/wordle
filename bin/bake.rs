@@ -212,6 +212,8 @@ fn bake_for(
                 },
             );
 
+            drop(score_tx);
+
             bar.finish();
 
             eprintln!(
