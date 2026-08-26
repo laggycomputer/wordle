@@ -145,12 +145,12 @@ fn bake_for(
     };
 
     let scores = if !bank_todo.is_empty() {
-        eprintln!("baking {}...", target.ident());
         time("bake missing words", || {
             let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
             eprintln!(
-                "baked {loaded_bake_progress}/{}; baking {} more...",
+                "baked {loaded_bake_progress}/{} for {}; baking {} more...",
                 store_shape[0],
+                target.ident(),
                 bank_todo.len()
             );
 
