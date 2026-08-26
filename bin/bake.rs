@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
+use indicatif::ProgressDrawTarget;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
 use rayon::iter::IntoParallelRefIterator as _;
@@ -20,7 +21,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::RwLock;
 use std::time::Duration;
-use indicatif::ProgressDrawTarget;
 use wordle::WORDS;
 use wordle::time;
 use wordle::word_bank;
@@ -149,6 +149,8 @@ fn bake_for(
     let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
     let scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
+    dbg!();
+
     let bank_todo = {
         words
             .iter()
@@ -156,6 +158,7 @@ fn bake_for(
             .filter_map(|(w, s)| (*s == i64::MIN).then_some(Arc::from(w.as_str())))
             .collect::<Vec<_>>()
     };
+    dbg!();
 
     let (mut guesser, scorer) = match target {
         BakeTarget::BaseState => {
@@ -183,9 +186,11 @@ fn bake_for(
         }
     };
 
+    dbg!();
     guesser = guesser.with_scores(&if !bank_todo.is_empty() {
         time("bake missing words", || {
             let scores = Mutex::new(scores);
+            eprintln!("is_term: {}", console::Term::stderr().is_term());
 
             let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
             eprintln!(
