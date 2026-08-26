@@ -1,7 +1,7 @@
-use std::io::Write;
 use konst::iter::collect_const;
 use rs_wordle_solver::WordBank;
 use rs_wordle_solver::WordleError;
+use std::io::Write as _;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::time::Instant;
