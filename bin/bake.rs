@@ -173,9 +173,12 @@ fn bake_for(
             )
         }
         BakeTarget::AfterResponse(scorer, results) => {
+            dbg!();
             let scorer = TakeableScorer::new(scorer.clone());
+            dbg!();
             let mut guesser =
                 MaxScoreGuesser::new(GuessFrom::AllUnguessedWords, bank.clone(), scorer.clone());
+            dbg!();
             let guess = guesser.select_next_guess().context("best next guess")?;
             dbg!();
             guesser.update(&GuessResult {
