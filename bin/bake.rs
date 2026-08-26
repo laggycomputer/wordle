@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use core::fmt::Formatter;
 use core::fmt::Write as _;
+use core::time::Duration;
 use indicatif::ProgressStyle;
 use itertools::Itertools as _;
 use rayon::iter::IndexedParallelIterator as _;
@@ -15,7 +16,7 @@ use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::mpsc::TryRecvError;
 use wordle::WORDS;
 use wordle::time;
 use wordle::word_bank;
@@ -101,6 +102,8 @@ fn bake_for(
         (w, s)
     };
 
+    let s_store = Arc::new(s_store);
+
     let words = w_store.retrieve_array_subset::<Vec<String>>(&subset_all)?;
     let scores = s_store.retrieve_array_subset::<Vec<i64>>(&subset_all)?;
 
@@ -135,7 +138,7 @@ fn bake_for(
     let scores = if !bank_todo.is_empty() {
         eprintln!("baking {}...", target.ident());
         time("bake missing words", || {
-            let scores = Mutex::new(scores);
+            let scores = Arc::new(Mutex::new(scores.into_boxed_slice()));
 
             let loaded_bake_progress = store_shape[0] - bank_todo.len() as u64;
             eprintln!(
@@ -143,23 +146,43 @@ fn bake_for(
                 store_shape[0],
                 bank_todo.len()
             );
+
             let bar = indicatif::ProgressBar::new(store_shape[0]);
             bar.set_position(loaded_bake_progress);
             bar.set_style(ProgressStyle::with_template(
                 "{wide_bar} {pos}/{len} {per_sec} {elapsed_precise}/{eta_precise} remaining",
             )?);
+
+            let (stop_cron_tx, stop_cron_rx) = std::sync::mpsc::sync_channel::<()>(1);
+            let cron = std::thread::spawn({
+                let s_store = s_store.clone();
+                let scores = scores.clone();
+                let bar = bar.clone();
+                move || {
+                    let subset_all = s_store.subset_all();
+                    loop {
+                        if matches!(
+                            stop_cron_rx.try_recv(),
+                            Ok(()) | Err(TryRecvError::Disconnected)
+                        ) {
+                            break;
+                        }
+
+                        bar.tick();
+                        match s_store.store_array_subset(&subset_all, &**scores.lock().unwrap()) {
+                            Ok(_) => (),
+                            Err(e) => bar.println(format!("err storing: {e}")),
+                        }
+
+                        std::thread::sleep(Duration::from_secs(1));
+                    }
+                }
+            });
             bar.enable_steady_tick(Duration::from_secs(1));
 
             bank_todo.par_iter().enumerate().for_each(|(i, w)| {
                 let score = guesser.score_word(w);
                 scores.lock().unwrap()[i] = score;
-                match s_store.store_array_subset(
-                    &ArraySubset::new_with_start_shape(vec![i as u64], vec![1]).unwrap(),
-                    &[score],
-                ) {
-                    Ok(_) => (),
-                    Err(e) => bar.println(format!("err storing: {e}")),
-                };
                 bar.inc(1);
             });
 
@@ -171,7 +194,13 @@ fn bake_for(
                 store_path.display(),
             );
 
-            let scores = scores.into_inner()?;
+            stop_cron_tx.send(())?;
+            let _ = cron.join();
+
+            let scores = Arc::into_inner(scores)
+                .context("we should be the sole holder")?
+                .into_inner()?
+                .to_vec();
             s_store.store_array_subset(&subset_all, &scores)?;
 
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
