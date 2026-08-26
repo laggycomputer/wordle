@@ -138,7 +138,7 @@ fn bake_for(
                     done_store.store_metadata()?;
                     done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
-                    store.erase(&StoreKey::new(&s_store_path[1..])?)?;
+                    store.erase(&StoreKey::new(&(s_store_path[1..].to_owned() + "/"))?)?;
                     let inconsistent_store = ArrayBuilder::new(
                         [],
                         <[u64; 0]>::default(),
