@@ -81,8 +81,13 @@ fn bake_for(
     } else {
         eprintln!("creating array {score_key}");
 
-        let mut s = ArrayBuilder::new([WORDS.len() as u64], [1000], data_type::int64(), i64::MIN)
-            .build(store.clone(), &score_key)?;
+        let mut s = ArrayBuilder::new(
+            [WORDS.len() as u64],
+            [WORDS.len() as u64],
+            data_type::int64(),
+            i64::MIN,
+        )
+        .build(store.clone(), &score_key)?;
         s.set_dimension_names(Some(vec![Some("words".to_owned())]));
         s.store_metadata()?;
 
@@ -249,8 +254,13 @@ fn main() -> anyhow::Result<()> {
             .build(store.clone(), "/")?
             .store_metadata()?;
 
-        let mut w = ArrayBuilder::new([WORDS.len() as u64], [1000], data_type::string(), "")
-            .build(store.clone(), "/word")?;
+        let mut w = ArrayBuilder::new(
+            [WORDS.len() as u64],
+            [WORDS.len() as u64],
+            data_type::string(),
+            "",
+        )
+        .build(store.clone(), "/word")?;
         w.set_dimension_names(Some(vec![Some("words".to_owned())]));
         w.store_metadata()?;
         w.store_array_subset(&w.subset_all(), &*WORDS)?;
