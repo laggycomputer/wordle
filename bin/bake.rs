@@ -75,9 +75,9 @@ fn bake_for(
 ) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
     let store_shape = [WORDS.len() as u64];
     let subset_all = ArraySubset::new_with_shape(vec![WORDS.len() as u64]);
-    // could be other fs e.g. permission error but meh
 
     let s_store_path = format!("/{}/score", target.ident());
+    // could be other fs e.g. permission error but meh
     let s_store = if let Ok(s) = Array::open(store.clone(), &s_store_path) {
         s
     } else {
