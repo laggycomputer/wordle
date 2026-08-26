@@ -68,8 +68,6 @@ fn bake_for(
 ) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
     let data_path = dirs.data_dir();
 
-    eprintln!("baking {}", target.ident());
-
     let store_path = {
         let mut p = data_path.join("");
         write!(p.as_mut_os_string(), "{}.zarr", target.ident())?;
@@ -86,7 +84,7 @@ fn bake_for(
         let s = Array::open(store.clone(), "/score")?;
         (w, s)
     } else {
-        eprintln!("creating store");
+        eprintln!("creating store {}", store_path.display());
         zarrs::group::GroupBuilder::new()
             .build(store.clone(), "/")?
             .store_metadata()?;
@@ -135,6 +133,7 @@ fn bake_for(
     };
 
     let scores = if !bank_todo.is_empty() {
+        eprintln!("baking {}...", target.ident());
         time("bake missing words", || {
             let scores = Mutex::new(scores);
 
@@ -178,6 +177,7 @@ fn bake_for(
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
+        eprintln!("{} was already baked", target.ident());
         words.into_iter().map(Arc::from).zip(scores).collect()
     };
 
