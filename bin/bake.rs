@@ -247,7 +247,7 @@ fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(data_path)
         .with_context(|| format!("can't create {}", data_path.display()))?;
 
-    let store_path = data_path.join("baked.store");
+    let store_path = data_path.join("baked.zarr");
     let store = Arc::new(FilesystemStore::new(&store_path)?) as ReadableWritableListableStorage;
 
     if Array::open(store.clone(), "/word").is_err() {
