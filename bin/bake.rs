@@ -29,7 +29,7 @@ use zarrs::array::FillValueMetadata;
 use zarrs::array::data_type;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
-use zarrs::storage::StorePrefix;
+use zarrs::storage::StoreKey;
 use zarrs::storage::WritableStorageTraits as _;
 
 #[derive(Clone, Copy)]
@@ -75,9 +75,9 @@ fn bake_for(
 ) -> anyhow::Result<MaxScoreGuesser<MaxComboEliminationsScorer>> {
     let store_shape = [WORDS.len() as u64];
     let subset_all = ArraySubset::new_with_shape(vec![WORDS.len() as u64]);
+    // could be other fs e.g. permission error but meh
 
     let s_store_path = format!("/{}/score", target.ident());
-    // could be other fs e.g. permission error but meh
     let s_store = if let Ok(s) = Array::open(store.clone(), &s_store_path) {
         s
     } else {
@@ -138,7 +138,7 @@ fn bake_for(
                     done_store.store_metadata()?;
                     done_store.store_array_subset(&done_store.subset_all(), vec![true])?;
 
-                    store.erase_prefix(&StorePrefix::new(&s_store_path)?)?;
+                    store.erase(&StoreKey::new(&s_store_path[1..])?)?;
                     let inconsistent_store = ArrayBuilder::new(
                         [],
                         <[u64; 0]>::default(),
