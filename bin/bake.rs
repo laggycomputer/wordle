@@ -214,7 +214,11 @@ fn bake_for(
             );
 
             drop(score_tx);
-            bar.finish();
+            bar.set_style(ProgressStyle::with_template(
+                "{wide_bar} {pos}/{len} {elapsed_precise}",
+            )?);
+            bar.force_draw();
+            bar.abandon();
 
             eprintln!("baked scores done for state {}", target.ident());
 
