@@ -198,7 +198,9 @@ fn bake_for(
                 store_path.display(),
             );
 
+            dbg!();
             let scores = cron.join().ok().context("join cron")?;
+            dbg!();
             anyhow::Ok(words.into_iter().map(Arc::from).zip(scores).collect())
         })?
     } else {
