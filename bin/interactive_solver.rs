@@ -45,7 +45,6 @@ fn load_scores(
                 o => o,
             })),
     );
-    dbg!(buf["nares"]);
     Ok(())
 }
 
@@ -84,7 +83,6 @@ fn main() -> anyhow::Result<()> {
         MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)?,
     )
     .with_scores(&initial_scores);
-    dbg!(guesser.get_or_compute_scores()["nares"]);
 
     let mut first_guess = true;
     let word_length = bank.word_length();
