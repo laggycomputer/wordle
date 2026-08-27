@@ -215,11 +215,7 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        time("updated state", || {
-            guesser.update(&result).context("update state")?;
-
-            anyhow::Ok(())
-        })?;
+        guesser.update(&result).context("update state")?;
 
         if guess == best_guess {
             bake_path.push('/');
@@ -233,11 +229,7 @@ fn main() -> anyhow::Result<()> {
                 })
                 .for_each(|l| bake_path.push(l));
 
-            let load_result = time(
-                &format!("attempt to load baked scores at {bake_path}"),
-                || load_scores(&store, &mut scores_buf, &words, &bake_path),
-            );
-            match load_result {
+            match load_scores(&store, &mut scores_buf, &words, &bake_path) {
                 Err(e)
                     if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
                         && matches!(nf, ArrayCreateError::MissingMetadata) =>
