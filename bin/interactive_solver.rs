@@ -93,7 +93,11 @@ fn main() -> anyhow::Result<()> {
     let word_length = bank.word_length();
     let mut buf = String::with_capacity(word_length);
 
+    let mut round = 0;
+
     while guesser.possible_words().len() > 1 {
+        round += 1;
+
         let mut guesses = time(
             match first_guess {
                 true => "first guess",
@@ -117,12 +121,9 @@ fn main() -> anyhow::Result<()> {
         io::stderr().flush()?;
 
         let mut how_many_total = opts.next_n;
-        let mut round = 0;
-
         let best_guess = guesses[0].guess.clone();
 
         let guess = loop {
-            round += 1;
             eprint!("round {round}, enter your guess (word or index) or !more <x>: ");
             io::stderr().flush()?;
             buf.clear();
