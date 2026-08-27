@@ -40,7 +40,10 @@ fn load_scores(
         words
             .iter()
             .cloned()
-            .zip(scores.retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?),
+            .zip(scores.retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?.into_iter().map(|s| match s {
+                i64::MIN => i64::MIN + 1,
+                o => o,
+            })),
     );
     dbg!(buf["nares"]);
     Ok(())
