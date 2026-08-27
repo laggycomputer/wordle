@@ -228,14 +228,14 @@ fn main() -> anyhow::Result<()> {
                             && matches!(nf, ArrayCreateError::MissingMetadata) =>
                     {
                         eprintln!(
-                            "WARNING: no longer using baked scores! proceed at your own risk..."
+                            "WARNING: no longer using baked scores! computing scores now..."
                         );
                     }
                     e @ Err(_) => return e,
                     Ok(_) => guesser = guesser.with_scores(&scores_buf),
                 }
             } else {
-                eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
+                eprintln!("WARNING: no longer using baked scores! computing scores now...");
             }
         }
     }
