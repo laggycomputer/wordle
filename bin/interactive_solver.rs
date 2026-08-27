@@ -10,12 +10,15 @@ use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::collections::HashMap;
 use std::io;
+use std::io::ErrorKind;
 use std::io::Write as _;
 use std::sync::Arc;
 use wordle::time;
 use zarrs::array::Array;
+use zarrs::array::ArrayCreateError;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
+use zarrs::storage::StorageError;
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -37,13 +40,15 @@ fn load_scores(
 
     buf.clear();
     buf.extend(
-        words
-            .iter()
-            .cloned()
-            .zip(scores.retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?.into_iter().map(|s| match s {
-                i64::MIN => i64::MIN + 1,
-                o => o,
-            })),
+        words.iter().cloned().zip(
+            scores
+                .retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?
+                .into_iter()
+                .map(|s| match s {
+                    i64::MIN => i64::MIN + 1,
+                    o => o,
+                }),
+        ),
     );
     Ok(())
 }
@@ -74,15 +79,15 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut bake_path = "/0".to_owned();
-    let mut initial_scores = HashMap::with_capacity(words.len());
-    load_scores(&store, &mut initial_scores, &words, &bake_path)?;
+    let mut scores_buf = HashMap::with_capacity(words.len());
+    load_scores(&store, &mut scores_buf, &words, &bake_path)?;
 
     let mut guesser = MaxScoreGuesser::new(
         GuessFrom::AllUnguessedWords,
         bank.clone(),
         MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)?,
     )
-    .with_scores(&initial_scores);
+    .with_scores(&scores_buf);
 
     let mut first_guess = true;
     let word_length = bank.word_length();
@@ -113,6 +118,8 @@ fn main() -> anyhow::Result<()> {
 
         let mut how_many_total = opts.next_n;
         let mut round = 0;
+
+        let best_guess = guesses[0].guess.clone();
 
         let guess = loop {
             round += 1;
@@ -205,7 +212,42 @@ fn main() -> anyhow::Result<()> {
             }
         };
 
-        time("updated state", || guesser.update(&result)).context("update state")?;
+        time("updated state", || {
+            guesser.update(&result).context("update state")?;
+
+            anyhow::Ok(())
+        })?;
+
+        if guess == best_guess {
+            bake_path.push('/');
+            result
+                .results
+                .iter()
+                .map(|l| match l {
+                    LetterResult::Correct => 'g',
+                    LetterResult::PresentNotHere => 'y',
+                    LetterResult::NotPresent => 'b',
+                })
+                .for_each(|l| bake_path.push(l));
+
+            let load_result = time(
+                &format!("attempt to load baked scores at {bake_path}"),
+                || load_scores(&store, &mut scores_buf, &words, &bake_path),
+            );
+            match load_result {
+                Err(e)
+                    if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
+                        && let ArrayCreateError::StorageError(StorageError::IOError(io)) = nf
+                        && io.kind() == ErrorKind::NotFound =>
+                {
+                    eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
+                }
+                e @ Err(_) => return e,
+                Ok(_) => guesser = guesser.with_scores(&scores_buf),
+            }
+        } else {
+            eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
+        }
     }
 
     match &guesser.possible_words() {
