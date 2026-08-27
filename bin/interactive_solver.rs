@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let mut bake_path = "0".to_owned();
+    let mut bake_path = "/0".to_owned();
     let mut initial_scores = HashMap::with_capacity(words.len());
     load_scores(&store, &mut initial_scores, &words, &bake_path)?;
 
