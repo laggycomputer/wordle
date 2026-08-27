@@ -88,7 +88,6 @@ fn main() -> anyhow::Result<()> {
     )
     .with_scores(&scores_buf);
 
-    let mut first_guess = true;
     let word_length = bank.word_length();
     let mut buf = String::with_capacity(word_length);
 
@@ -97,13 +96,11 @@ fn main() -> anyhow::Result<()> {
     while guesser.possible_words().len() > 1 {
         round += 1;
 
-        let (timing_phase, mut how_many_total) = match first_guess {
-            true => {
-                first_guess = false;
-                bake_path.clear();
-                ("first guess", opts.first_n)
-            }
-            false => ("next guess", opts.next_n),
+        let (timing_phase, mut how_many_total) = if round == 1 {
+            bake_path.clear();
+            ("first guess", opts.first_n)
+        } else {
+            ("next guess", opts.next_n)
         };
 
         let mut guesses = time(timing_phase, || {
