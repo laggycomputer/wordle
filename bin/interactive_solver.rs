@@ -10,7 +10,6 @@ use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
 use std::collections::HashMap;
 use std::io;
-use std::io::ErrorKind;
 use std::io::Write as _;
 use std::sync::Arc;
 use wordle::time;
@@ -18,7 +17,6 @@ use zarrs::array::Array;
 use zarrs::array::ArrayCreateError;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableWritableListableStorage;
-use zarrs::storage::StorageError;
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -238,8 +236,7 @@ fn main() -> anyhow::Result<()> {
             match load_result {
                 Err(e)
                     if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
-                        && let ArrayCreateError::StorageError(StorageError::IOError(io)) = nf
-                        && io.kind() == ErrorKind::NotFound =>
+                        && matches!(nf, ArrayCreateError::MissingMetadata) =>
                 {
                     eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
                 }
