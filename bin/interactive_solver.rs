@@ -42,6 +42,7 @@ fn load_scores(
             .cloned()
             .zip(scores.retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?),
     );
+    dbg!(buf["nares"]);
     Ok(())
 }
 
