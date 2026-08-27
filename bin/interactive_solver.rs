@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use anyhow::bail;
 use clap::Parser;
+use pluralizer::pluralize;
 use rs_wordle_solver::GuessFrom;
 use rs_wordle_solver::GuessResult;
 use rs_wordle_solver::Guesser as _;
@@ -115,6 +116,9 @@ fn main() -> anyhow::Result<()> {
 
         for (i, g) in guesses.iter().enumerate() {
             eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
+        }
+        if let Some(more) = guesser.possible_words().len().checked_sub(guesses.len()) {
+            eprintln!("and {more} more...");
         }
         io::stderr().flush()?;
 
@@ -248,8 +252,13 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    round += 1;
+
     match &guesser.possible_words() {
-        [one] => eprintln!("the game is solved: {one}"),
+        [one] => eprintln!(
+            "the game is solved in {}: {one}",
+            pluralize("round", round, true)
+        ),
         [] => eprintln!("game is inconsistent :("),
         _ => unreachable!("we should be looping"),
     }
