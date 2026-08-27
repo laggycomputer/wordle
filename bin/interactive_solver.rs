@@ -217,30 +217,34 @@ fn main() -> anyhow::Result<()> {
 
         guesser.update(&result).context("update state")?;
 
-        if guess == best_guess {
-            bake_path.push('/');
-            result
-                .results
-                .iter()
-                .map(|l| match l {
-                    LetterResult::Correct => 'g',
-                    LetterResult::PresentNotHere => 'y',
-                    LetterResult::NotPresent => 'b',
-                })
-                .for_each(|l| bake_path.push(l));
+        if guesser.possible_words().len() > 1 {
+            if guess == best_guess {
+                bake_path.push('/');
+                result
+                    .results
+                    .iter()
+                    .map(|l| match l {
+                        LetterResult::Correct => 'g',
+                        LetterResult::PresentNotHere => 'y',
+                        LetterResult::NotPresent => 'b',
+                    })
+                    .for_each(|l| bake_path.push(l));
 
-            match load_scores(&store, &mut scores_buf, &words, &bake_path) {
-                Err(e)
-                    if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
-                        && matches!(nf, ArrayCreateError::MissingMetadata) =>
-                {
-                    eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
+                match load_scores(&store, &mut scores_buf, &words, &bake_path) {
+                    Err(e)
+                        if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
+                            && matches!(nf, ArrayCreateError::MissingMetadata) =>
+                    {
+                        eprintln!(
+                            "WARNING: no longer using baked scores! proceed at your own risk..."
+                        );
+                    }
+                    e @ Err(_) => return e,
+                    Ok(_) => guesser = guesser.with_scores(&scores_buf),
                 }
-                e @ Err(_) => return e,
-                Ok(_) => guesser = guesser.with_scores(&scores_buf),
+            } else {
+                eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
             }
-        } else {
-            eprintln!("WARNING: no longer using baked scores! proceed at your own risk...");
         }
     }
 
