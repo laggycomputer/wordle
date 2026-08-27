@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
 
     let store_path = data_path.join("baked.zarr");
     let store = Arc::new(FilesystemStore::new(&store_path)?) as ReadableWritableListableStorage;
-    let word_array = Array::open(store.clone(), "word")?;
+    let word_array = Array::open(store.clone(), "/word")?;
     let words = word_array
         .retrieve_array_subset::<Vec<String>>(&word_array.subset_all())?
         .into_iter()
