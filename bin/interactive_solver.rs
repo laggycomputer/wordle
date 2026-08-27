@@ -163,7 +163,7 @@ fn main() -> anyhow::Result<()> {
             let result = rs_wordle_solver::get_result_for_guess(s, &guess)
                 .context("result for guess against simulated target")?;
 
-            print!("given simulation target, the result of this guess is: ");
+            eprint!("given simulation target, the result of this guess is: ");
             result
                 .results
                 .iter()
@@ -172,14 +172,14 @@ fn main() -> anyhow::Result<()> {
                     LetterResult::PresentNotHere => 'y',
                     LetterResult::NotPresent => 'b',
                 })
-                .for_each(|l| print!("{l}"));
+                .for_each(|l| eprint!("{l}"));
             eprintln!();
 
             result
         } else {
             let mut outcome = Vec::with_capacity(word_length);
             'outcome: loop {
-                print!("enter the outcome, b/y/g: ");
+                eprint!("enter the outcome, b/y/g: ");
                 io::stderr().flush()?;
 
                 buf.clear();
