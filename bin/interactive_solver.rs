@@ -97,22 +97,18 @@ fn main() -> anyhow::Result<()> {
     while guesser.possible_words().len() > 1 {
         round += 1;
 
-        let mut guesses = time(
-            match first_guess {
-                true => "first guess",
-                false => "next guess",
-            },
-            || {
-                guesser.select_top_n_guesses(match first_guess {
-                    true => {
-                        first_guess = false;
-                        bake_path.clear();
-                        opts.first_n
-                    }
-                    false => opts.next_n,
-                })
-            },
-        );
+        let (timing_phase, mut how_many_total) = match first_guess {
+            true => {
+                first_guess = false;
+                bake_path.clear();
+                ("first guess", opts.first_n)
+            }
+            false => ("next guess", opts.next_n),
+        };
+
+        let mut guesses = time(timing_phase, || {
+            guesser.select_top_n_guesses(how_many_total)
+        });
 
         for (i, g) in guesses.iter().enumerate() {
             eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
@@ -122,7 +118,6 @@ fn main() -> anyhow::Result<()> {
         }
         io::stderr().flush()?;
 
-        let mut how_many_total = opts.next_n;
         let best_guess = guesses[0].guess.clone();
 
         let guess = loop {
