@@ -1,16 +1,21 @@
 use anyhow::Context as _;
 use anyhow::bail;
 use clap::Parser;
+use rs_wordle_solver::GuessFrom;
 use rs_wordle_solver::GuessResult;
 use rs_wordle_solver::Guesser as _;
 use rs_wordle_solver::LetterResult;
 use rs_wordle_solver::MaxScoreGuesser;
+use rs_wordle_solver::WordBank;
 use rs_wordle_solver::scorers::MaxComboEliminationsScorer;
+use std::collections::HashMap;
 use std::io;
 use std::io::Write as _;
 use std::sync::Arc;
 use wordle::time;
-use wordle::word_bank;
+use zarrs::array::Array;
+use zarrs::filesystem::FilesystemStore;
+use zarrs::storage::ReadableWritableListableStorage;
 
 #[derive(Debug, Parser)]
 struct Options {
@@ -22,24 +27,41 @@ struct Options {
     simulate: Option<String>,
 }
 
-// TODO load bake
+fn load_scores(
+    store: &ReadableWritableListableStorage,
+    buf: &mut HashMap<Arc<str>, i64>,
+    words: &[Arc<str>],
+    ident: &str,
+) -> anyhow::Result<()> {
+    let scores = Array::open(store.clone(), &format!("{ident}/score"))?;
+
+    buf.clear();
+    buf.extend(
+        words
+            .iter()
+            .cloned()
+            .zip(scores.retrieve_array_subset::<Vec<i64>>(&scores.subset_all())?),
+    );
+    Ok(())
+}
 
 fn main() -> anyhow::Result<()> {
     let mut opts = Options::parse();
 
-    let (bank, mut guesser) = time("init from baked", || {
-        let bank = word_bank().context("word bank")?;
+    let dirs = directories::ProjectDirs::from("com", "laggo", "wordle")
+        .context("can't determine storage loc")?;
 
-        anyhow::Ok((bank.clone(), {
-            let decompressed = oxicode::compression::decompress(include_bytes!("../init.bin"))?;
-            let (decoded, _) = oxicode::serde::decode_from_slice::<
-                MaxScoreGuesser<MaxComboEliminationsScorer>,
-                _,
-            >(&decompressed, oxicode::config::standard())?;
+    let data_path = dirs.data_dir();
 
-            decoded
-        }))
-    })?;
+    let store_path = data_path.join("baked.zarr");
+    let store = Arc::new(FilesystemStore::new(&store_path)?) as ReadableWritableListableStorage;
+    let word_array = Array::open(store.clone(), "word")?;
+    let words = word_array
+        .retrieve_array_subset::<Vec<String>>(&word_array.subset_all())?
+        .into_iter()
+        .map(Arc::from)
+        .collect::<Vec<_>>();
+    let bank = WordBank::from_iterator(words.iter().cloned())?;
 
     if let Some(ref mut s) = opts.simulate {
         s.make_ascii_lowercase();
@@ -47,6 +69,17 @@ fn main() -> anyhow::Result<()> {
             bail!("invalid simulate target")
         }
     }
+
+    let mut bake_path = "0".to_owned();
+    let mut initial_scores = HashMap::with_capacity(words.len());
+    load_scores(&store, &mut initial_scores, &words, &bake_path)?;
+
+    let mut guesser = MaxScoreGuesser::new(
+        GuessFrom::AllUnguessedWords,
+        bank.clone(),
+        MaxComboEliminationsScorer::new(bank.clone(), GuessFrom::AllUnguessedWords, 256)?,
+    )
+    .with_scores(&initial_scores);
 
     let mut first_guess = true;
     let word_length = bank.word_length();
@@ -62,6 +95,7 @@ fn main() -> anyhow::Result<()> {
                 guesser.select_top_n_guesses(match first_guess {
                     true => {
                         first_guess = false;
+                        bake_path.clear();
                         opts.first_n
                     }
                     false => opts.next_n,
