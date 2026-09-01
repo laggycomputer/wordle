@@ -92,6 +92,7 @@ fn main() -> anyhow::Result<()> {
     let mut buf = String::with_capacity(word_length);
 
     let mut round = 0;
+    let mut last_round_exact = false;
     let mut no_score = false;
 
     while guesser.possible_words().len() > 1 {
@@ -237,6 +238,7 @@ fn main() -> anyhow::Result<()> {
         };
 
         guesser.update(&result).context("update state")?;
+        last_round_exact = result.results.iter().all(|lr| *lr == LetterResult::Correct);
 
         if guesser.possible_words().len() > 1
             && let Some((recommendations, _)) = scoring_state
@@ -269,7 +271,9 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    round += 1;
+    if !last_round_exact {
+        round += 1;
+    }
 
     match &guesser.possible_words() {
         [one] => eprintln!(
