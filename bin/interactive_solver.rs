@@ -92,33 +92,46 @@ fn main() -> anyhow::Result<()> {
     let mut buf = String::with_capacity(word_length);
 
     let mut round = 0;
+    let mut no_score = false;
 
     while guesser.possible_words().len() > 1 {
         round += 1;
 
-        let (timing_phase, mut how_many_total) = if round == 1 {
-            bake_path.clear();
-            ("first guess", opts.first_n)
+        let mut scoring_state = None;
+
+        if !no_score {
+            let (timing_phase, how_many_total) = if round == 1 {
+                bake_path.clear();
+                ("first guess", opts.first_n)
+            } else {
+                ("next guess", opts.next_n)
+            };
+
+            let recommendations = time(timing_phase, || {
+                guesser.select_top_n_guesses(how_many_total)
+            });
+
+            for (i, g) in recommendations.iter().enumerate() {
+                eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
+            }
+            if let Some(more) = guesser
+                .possible_words()
+                .len()
+                .checked_sub(recommendations.len())
+                && more > 0
+            {
+                eprintln!("and {more} more...");
+            }
+            io::stderr().flush()?;
+
+            scoring_state = Some((recommendations, 0));
         } else {
-            ("next guess", opts.next_n)
-        };
-
-        let mut guesses = time(timing_phase, || {
-            guesser.select_top_n_guesses(how_many_total)
-        });
-
-        for (i, g) in guesses.iter().enumerate() {
-            eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
+            eprintln!("noscore requested; no recommendations this round");
+            no_score = false;
         }
-        if let Some(more) = guesser.possible_words().len().checked_sub(guesses.len()) {
-            eprintln!("and {more} more...");
-        }
-        io::stderr().flush()?;
-
-        let best_guess = guesses[0].guess.clone();
 
         let guess = loop {
-            eprint!("round {round}, enter your guess (word or index) or !more <x>: ");
+            eprint!("round {round}, enter your guess (word or index), !more <x>, or !noscore: ");
             io::stderr().flush()?;
             buf.clear();
             io::stdin().read_line(&mut buf).context("read stdin")?;
@@ -128,20 +141,36 @@ fn main() -> anyhow::Result<()> {
             if let Some(cmd) = trimmed.strip_prefix('!') {
                 match cmd.split_once(' ').unwrap_or((cmd, "")) {
                     ("more", how_many) if let Ok(how_many_more) = how_many.parse::<usize>() => {
-                        how_many_total += how_many_more;
-                        let more = guesser.select_top_n_guesses(how_many_total);
-                        for (i, g) in more.iter().enumerate().skip(how_many_total - how_many_more) {
-                            eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
+                        if let Some((ref mut recommendations, mut how_many_total)) = scoring_state {
+                            how_many_total += how_many_more;
+
+                            let more = guesser.select_top_n_guesses(how_many_total);
+                            for (i, g) in
+                                more.iter().enumerate().skip(how_many_total - how_many_more)
+                            {
+                                eprintln!("{}. {} ({})", i + 1, g.guess, g.score);
+                            }
+                            *recommendations = more;
+                        } else {
+                            eprintln!("no recommendations this round due to earlier !noscore");
                         }
-                        guesses = more;
+                    }
+                    ("noscore", _) => {
+                        no_score = !no_score;
+                        if no_score {
+                            eprintln!("ok, not scoring score options for next guess");
+                        } else {
+                            eprintln!("ok, will score options for next guess");
+                        }
                     }
                     _ => {}
                 }
             }
             if let Ok(p) = trimmed.parse::<usize>()
+                && let Some((ref recommendations, how_many_total)) = scoring_state
                 && p <= how_many_total
             {
-                break guesses[p - 1].guess.clone();
+                break recommendations[p - 1].guess.clone();
             } else if trimmed.len() == word_length
                 && trimmed.chars().all(|c| c.is_ascii_alphabetic())
                 && bank.iter().any(|w| w.eq_ignore_ascii_case(trimmed))
@@ -209,8 +238,10 @@ fn main() -> anyhow::Result<()> {
 
         guesser.update(&result).context("update state")?;
 
-        if guesser.possible_words().len() > 1 {
-            if guess == best_guess {
+        if guesser.possible_words().len() > 1
+            && let Some((recommendations, _)) = scoring_state
+        {
+            if guess == recommendations[0].guess {
                 bake_path.push('/');
                 result
                     .results
@@ -227,9 +258,7 @@ fn main() -> anyhow::Result<()> {
                         if let Some(nf) = e.downcast_ref::<ArrayCreateError>()
                             && matches!(nf, ArrayCreateError::MissingMetadata) =>
                     {
-                        eprintln!(
-                            "WARNING: no longer using baked scores! computing scores now..."
-                        );
+                        eprintln!("WARNING: no longer using baked scores! computing scores now...");
                     }
                     e @ Err(_) => return e,
                     Ok(_) => guesser = guesser.with_scores(&scores_buf),
